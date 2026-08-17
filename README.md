@@ -1,26 +1,60 @@
-# IDE Data Science Club — Project Template
+# DeadZone — Intermediate
 
-A starter repository for **project managers (PMs)** in the IDE Data Science Club. Fork or "Use this template" to spin up a new project with the conventions, workflow, and scaffolding the club expects already in place.
+*ADSC Catalyst Project · Fall 2026*
 
-## What's in here
+## Overview
+
+DeadZone builds a tool that visualizes global shipping lanes, models how lane behaviour changes under specified disruptions (e.g., a canal closure), and predicts how the economic value of certain goods shifts in response. The final artifact ties AIS ship tracking, a graph neural network, and a downstream economic model into one interactive map.
+
+## Objective
+
+Ship an interactive dashboard where a user can pick a shipping choke point + a disruption scenario and see (a) predicted lane rerouting and (b) predicted downstream price/availability effects on a chosen goods category.
+
+## Suggested tech stack
+
+- **Geospatial:** GeoPandas, Shapely, H3
+- **Modeling:** PyTorch Geometric (GNN), Prophet / LSTM (for lane traffic time series)
+- **Visualization:** Streamlit, Kepler.gl
+- **Data sources:** AIS ship-tracking data (MarineCadastre, Global Fishing Watch), UN Comtrade for goods flows
+
+See [`DATA.md`](DATA.md) for concrete data sources and how to access them.
+
+## What team members will gain
+
+- Hands-on with the Automatic Identification System (AIS) that tracks the world's ships
+- A graph neural network that predicts network-level effects of local shocks
+- A secondary economic model that translates traffic changes into predicted price/availability moves — the rare combination of geospatial ML + econ
+
+## Suggested scope (v1)
+
+Focus on **one choke point** (Suez, Panama, or Malacca) with **1–2 years of AIS data**. Global-network v1 is unnecessarily ambitious.
+
+Build:
+
+1. AIS ingestion + spatial gridding with H3 (resolution ~6),
+2. Lane extraction: trajectories → typical lane edges as a graph,
+3. GNN or LSTM on lane traffic to predict rerouting under a shock,
+4. Simple economic-impact model for **one** goods category (e.g., crude oil transiting Suez) — historical traffic × price elasticity as a first cut,
+5. Streamlit dashboard with the choke point on Kepler.gl, a scenario picker, and predicted rerouting + price impact.
+
+**Out of scope for v1:** full global network, real-time AIS ingest, multi-goods portfolios, port-level congestion modeling.
+
+See [`DELIVERABLES.md`](DELIVERABLES.md) for the suggested deliverable breakdown and rough timeline.
+
+## Repository map
 
 | File / folder | Purpose |
 |---|---|
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **Start here.** How the team runs the project on GitHub — PM vs. member roles, the issue → PR → `main` flow, branching, worktrees, and reviews. |
-| [`DELIVERABLES.md`](DELIVERABLES.md) | The PMs' estimated deliverables and a rough timeline. A living plan, not a contract. |
-| [`DATA.md`](DATA.md) | Where the project's data comes from, how to find sources, and how to think about using them. Tracked in git. |
-| [`data/`](data/) | Working folder for actual datasets. **Git-ignored** — data never gets committed. |
-| [`AGENTS.md`](AGENTS.md) | The strict, machine-facing version of the workflow, for AI coding agents. |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | **Start here.** How the team runs the project on GitHub — PM vs. member roles, the issue → PR → `main` flow, branching, worktrees, reviews. |
+| [`DELIVERABLES.md`](DELIVERABLES.md) | Suggested deliverables and rough timeline. A living plan, not a contract. |
+| [`DATA.md`](DATA.md) | Suggested data sources, how to access them, and the source register. |
+| [`data/`](data/) | Local working folder for datasets. **Git-ignored** — data is never committed. |
+| [`AGENTS.md`](AGENTS.md) | Machine-facing workflow rules for AI coding agents. |
 
-## How to use this template
+## Notes for PMs
 
-1. **Create your repo from it.** On GitHub, click **Use this template → Create a new repository** (or fork it), then clone your copy.
-2. **Read [`CONTRIBUTING.md`](CONTRIBUTING.md).** Everyone on the team reads it; it's the operating manual.
-3. **Fill in [`DELIVERABLES.md`](DELIVERABLES.md)** with your project's real deliverables and dates.
-4. **Fill in [`DATA.md`](DATA.md)** with your actual data sources.
-5. **Turn on branch protection** for `main` (require a PR + one approval) and, ideally, **enable a code-review agent** (Codex or Claude auto-review) — see CONTRIBUTING.
-6. **Open your first issue** and run the flow.
+This README, [`DELIVERABLES.md`](DELIVERABLES.md), and [`DATA.md`](DATA.md) are **suggestions**, not commitments. Rewrite them as the team scopes the real project.
 
-## The one-paragraph version
+## Notes for members
 
-Every change starts as a GitHub **Issue**, gets built on a **branch** (organized as a small tree per issue, each slice optionally in its own **worktree**), is opened as a **pull request**, reviewed (by a teammate and, ideally, an auto-review agent), and merged **up the tree**. Only a **PM** merges the issue's integration branch into `main`. `main` is always in a known-good state. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before touching code. Then pick up an issue from the board.

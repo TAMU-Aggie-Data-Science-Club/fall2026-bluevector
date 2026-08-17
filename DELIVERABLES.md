@@ -1,21 +1,19 @@
 # Deliverables & Timeline
 
-> **How to read this file.** This is the PMs' best current estimate of what the project needs to ship and roughly when. It is a **living plan, not a contract** — deliverables will be added, dropped, split, or resequenced as the team learns more. The authoritative, up-to-the-minute picture always lives in the repo's **GitHub Issues and Project board**; this file is the high-level narrative that keeps everyone oriented.
->
-> PMs: replace the placeholder rows below with your real deliverables. Keep each deliverable small enough to become one or a few issues.
+> **How to read this file.** This is the PMs' best current estimate of what DeadZone needs to ship and roughly when. It is a **living plan, not a contract**. The authoritative picture lives in **GitHub Issues and the Project board**.
 
-## Milestones at a glance
+## Milestones (suggested)
 
 | # | Deliverable | Description | Owner (role) | Target |
 |---|-------------|-------------|--------------|--------|
-| 1 | Project scoping | Define the problem, success criteria, and out-of-scope items. | PM | Week 1 |
-| 2 | Data sourcing & access | Identify and secure the data sources (see [`DATA.md`](DATA.md)). | PM + members | Weeks 1–2 |
-| 3 | Data exploration (EDA) | Load, profile, and document the data; surface quality issues. | Members | Weeks 2–3 |
-| 4 | Data cleaning & prep | Reproducible pipeline from raw → analysis-ready. | Members | Weeks 3–4 |
-| 5 | Baseline model / analysis | First end-to-end result to beat. | Members | Weeks 4–5 |
-| 6 | Iteration & evaluation | Improve on the baseline; agree on evaluation metrics. | Members + PM | Weeks 5–7 |
-| 7 | Findings & deliverable | Report / dashboard / model artifact for the audience. | Members + PM | Weeks 7–8 |
-| 8 | Handoff & retro | Documentation, reproducibility check, lessons learned. | PM | Week 8 |
+| 1 | Project scoping | Pick choke point + one goods category + shock scenario. Define what "predicted rerouting" means operationally. | PM | Week 1 |
+| 2 | Data access | Pull AIS for the bounding box + Comtrade for the goods category + commodity prices. Documented in [`DATA.md`](DATA.md). | PM + members | Weeks 1–2 |
+| 3 | AIS cleaning + gridding | Filter, dedupe, H3-grid vessel positions. Produce per-cell traffic time series. | Members | Weeks 2–3 |
+| 4 | Lane graph extraction | Build the graph of lane edges from trajectories, with traffic weights. | Members | Week 3 |
+| 5 | GNN / LSTM model | Predict per-edge traffic under a shock. Time-based splits. | Members | Weeks 4–5 |
+| 6 | Economic-impact model | Historical traffic × price elasticity for the chosen goods category. Report intervals, not point estimates. | Members | Weeks 5–6 |
+| 7 | Kepler.gl + Streamlit dashboard | Choke-point map, scenario picker, predicted rerouting overlay, predicted price impact plot. | Members + PM | Weeks 6–7 |
+| 8 | Handoff & retro | Reproducibility check, short writeup with scenario examples, lessons learned. | PM | Week 8 |
 
 ## Timeline (rough)
 
@@ -23,18 +21,18 @@
 Week:   1     2     3     4     5     6     7     8
         |-----|-----|-----|-----|-----|-----|-----|
 Scope   ██
-Data          ████
-EDA                 ████
-Prep                      ████
-Baseline                        ██
-Iterate                              ████████
-Deliver                                       ████
+Access        ██
+AIS clean           ████
+Lane graph                ██
+Model                       ████
+Econ                            ████
+Dashboard                                  ████
 Retro                                              ██
 ```
 
 ## Working agreements
 
 - **Each deliverable maps to one or more GitHub Issues.** The board is the source of truth; this file is the summary.
-- **Dates are estimates.** When reality diverges, update the issue and, if the shift is material, this file. Don't let this file quietly go stale.
+- **Dates are estimates.** When reality diverges, update the issue and this file if the shift is material.
 - **"Done" is defined per issue** via acceptance criteria — not by a date passing.
 - **Reprioritize openly.** If a deliverable changes, a PM notes why in the issue so the decision is auditable.
