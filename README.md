@@ -13,7 +13,7 @@ Ship an interactive dashboard where a user can pick any edge in the global shipp
 ## Suggested tech stack
 
 - **Geospatial & graph:** GeoPandas, Shapely, NumPy, NetworkX, `searoute` (sea distances). H3 is optional (snapping and heatmap layers), not core.
-- **Modeling:** PyTorch Geometric (GNN), Prophet / LSTM (port and chokepoint traffic time series), NetworkX / SciPy (baseline network flow model)
+- **Modeling:** PyTorch Geometric (GNN, the core learned model), NetworkX / SciPy (flow model and scenario simulator), Prophet / LSTM (benchmark time-series models)
 - **Economics:** statsmodels, scikit-learn (price model, intervals)
 - **Visualization:** Streamlit, Kepler.gl (PyDeck as a fallback if the Kepler.gl–Streamlit integration proves unmaintained)
 - **Storage:** Parquet via pandas / pyarrow
@@ -27,7 +27,7 @@ See [`DATA.md`](DATA.md) for concrete data sources and how to access them.
 
 - Hands-on with AIS-derived maritime data and the global shipping network
 - Network flow modeling: how a local shock reroutes traffic and propagates through a whole graph
-- A graph neural network that learns what the baseline flow model misses
+- A graph neural network trained on simulated and real disruptions to predict how edge attributes change anywhere in the network
 - A secondary economic model that translates network changes into shipping-cost and oil-price effects, with honest uncertainty intervals
 - Validating a model against real historical events (the Red Sea diversions) instead of trusting it blindly
 
@@ -39,9 +39,9 @@ Build:
 
 1. Port selection + graph skeleton: rank ports by volume from PortWatch to pick the ~100 most significant (with a stated coverage figure), add ~15–20 junction nodes, treat chokepoints as edges, and compute sea distances and geometry,
 2. Data ingestion: PortWatch (transit counts, port calls, volume estimates), UN Comtrade (crude oil, HS 2709), EIA (Brent), and a Global Fishing Watch sample for ship-level validation,
-3. Baseline flow model: build an origin-destination (OD) oil matrix from Comtrade calibrated to PortWatch port totals, then route it with minimum-cost flow including capacity limits and congestion penalties. A scenario engine closes or throttles any edge and re-solves, so every edge gets a predicted change,
-4. Learned model: a GNN or LSTM on port and chokepoint traffic time series, used to learn residuals the baseline misses (stretch goal if time is short),
-5. Oil price model: shipping cost per barrel computed from the network, plus a statistical model of the Brent price using network-derived indices, reporting intervals, not point estimates, and benchmarked against a naive random-walk forecast,
+3. Baseline flow model: build an origin-destination (OD) oil matrix from Comtrade calibrated to PortWatch port totals, then route it with minimum-cost flow including capacity limits and congestion penalties. A scenario engine closes or throttles any edge and re-solves, so every edge gets a predicted change. The flow model is also the simulator that generates training scenarios for the GNN, and the baseline the GNN must beat,
+4. Graph neural network (core model): trained on simulated disruption scenarios from the flow model plus real PortWatch data (including the 2023–24 Red Sea diversions), predicting how every edge attribute changes when any edge is closed or throttled, and evaluated against the flow model on held-out real events,
+5. Oil price model: shipping cost per barrel computed from the network, plus a statistical model of the Brent price using network-derived features (indices built from the edge-level predictions), reporting intervals, not point estimates, and benchmarked against a naive random-walk forecast,
 6. Validation against real events: the 2023–24 Red Sea diversions (primary), the 2021 Ever Given blockage, and the 2023–24 Panama drought (partial),
 7. Streamlit dashboard with the network on Kepler.gl, an edge picker with a close/throttle control, propagated changes shown on the map, a price-impact plot, and an edge-criticality ranking.
 

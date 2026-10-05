@@ -6,29 +6,67 @@ This file explains **Blue Vector's** suggested data sources.
 
 ## Suggested sources (starting point)
 
-This table is the source register, ordered by necessity. Every adopted source gets a row with every column filled; use `TBD` where unknown.
+This table is the source register, ordered by necessity. The first seven columns are pre-filled. **Members fill in the blank columns for their own rows in Week 1.** `n/a` cells are not used. Background on each source is in [Source notes](#source-notes) below.
 
-| Priority | Source | Owner (subteam) | Origin / URL | Access method | License | Sensitivity | Notes | Exact fields confirmed | Coverage (regions, years, vessel types) | Update frequency and lag | Quota / API key | Check result (pass / fail) | Pull request |
+| Priority | Source | Owner (subteam) | Origin / URL | Access method | License | Sensitivity | Exact fields confirmed | Coverage (regions, years, vessel types) | Update frequency and lag | Quota / API key | Check result (pass / fail) | Pull request | Notes (members) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 · Essential | IMF PortWatch | A | https://portwatch.imf.org/ | Free download / API | IMF data terms: free with attribution; commercial reuse needs permission (verify PortWatch page-specific terms) | None | **Backbone of the project.** AIS-derived daily port calls and import/export volume estimates by vessel type, plus daily chokepoint transit calls and trade estimates (~28 chokepoints; verify the current list, including Suez, Bab-el-Mandeb, and Cape of Good Hope). Updated weekly (verify). Volumes are estimates, not measurements. **Without it there is no project.** |  |  |  |  |  |  |
-| 2 · Essential | UN Comtrade | B | https://comtrade.un.org/ | REST API (free API key) | Attribution — free tier | None | Bilateral crude oil flows (HS 2709) by country. Anchors the origin-destination demand matrix. Months of lag; mirror mismatches between exporter and importer reports are common. Without it, the OD matrix falls back to PortWatch port volumes alone and loses its country-to-country structure. |  |  |  |  |  |  |
-| 3 · Essential | EIA Open Data (Brent, WTI) | C | https://www.eia.gov/opendata/ | REST API (free API key) | US government data, free to use (confirm terms) | None | Daily Brent price: the target of the oil price model. Also publishes chokepoint oil-flow figures used to calibrate the crude share. Replaces FRED as the single Brent source. |  |  |  |  |  |  |
-| 4 · Essential | searoute | D | https://pypi.org/project/searoute/ | `pip install` | TBD (check the package and its bundled network data) | None | Sea distances and route geometry between nodes. Spot-check against published port-to-port distances. Without it the team must build its own sea routing. |  |  |  |  |  |  |
-| 5 · Recommended | Global Fishing Watch | D | https://globalfishingwatch.org/data-download/ (API: https://globalfishingwatch.org/our-apis/) | Registered download / API token | CC-BY-NC (research) | Low (vessel identifiers only) | Port-visit events for all vessel types, including tankers, with vessel identity. Used for ship-level tracing, port-to-port transit times, and delay validation (a **sample**, not the full fleet). Registration required; check API quotas. Non-commercial: attribute properly and don't ship it in a commercial product. Without it, transit days and delay become `modeled` only and one validation channel is lost; the core model still runs. |  |  |  |  |  |  |
-| 6 · Recommended | NGA World Port Index | A | https://msi.nga.mil/Publications/WPI | Public download | US government, public (confirm) | None | Port locations and attributes to name and place port nodes, and to match ports across sources. Check which fields (e.g., channel depth) are available. If PortWatch already carries port locations, the main loss without it is the vessel-size-limit attribute. |  |  |  |  |  |  |
-| 7 · Optional | World Bank Commodity Prices | C | https://www.worldbank.org/en/research/commodity-markets | Monthly XLS | Public (confirm terms) | None | Monthly crude price history (Brent, Dubai, WTI) as a cross-check on Brent. Adds little once daily EIA data is in place. |  |  |  |  |  |  |
-| 8 · Optional | Natural Earth (coastlines, borders) | Unassigned | https://www.naturalearthdata.com/ | Public download | Public domain | None | Custom base layers for the map. Kepler.gl and PyDeck already include basemaps, so adopt only if custom layers are wanted. |  |  |  |  |  |  |
-| 9 · Optional | JODI-Oil | B | https://www.jodidata.org/ | Public download | TBD | None | Second source to cross-check Comtrade oil trade totals. Adopt only if Comtrade proves gappy for key oil exporters. Verify license before adopting. |  |  |  |  |  |  |
-| 10 · Redundant | FRED (Brent mirror) | — | https://fred.stlouisfed.org/ | REST API (free API key) | Free (confirm series terms) | None | Mirror of the EIA daily Brent series. **Do not adopt; use EIA.** | n/a | n/a | n/a | n/a | n/a | n/a |
-| 11 · Dropped | MarineCadastre (US AIS) | — | https://marinecadastre.gov/ais/ | Free bulk download by year/month | Public | None | **Dropped.** US waters only and very large; nothing in the core plan needs it. Reconsider only as an optional extension for detailed validation around US Gulf Coast crude export ports. | n/a | n/a | n/a | n/a | n/a | n/a |
+| 1 · Essential | IMF PortWatch | A | https://portwatch.imf.org/ | Free download / API | IMF data terms: free with attribution; commercial reuse needs permission (verify PortWatch page-specific terms) | None |  |  |  |  |  |  |  |
+| 2 · Essential | UN Comtrade | B | https://comtrade.un.org/ | REST API (free API key) | Attribution — free tier | None |  |  |  |  |  |  |  |
+| 3 · Essential | EIA Open Data (Brent, WTI) | C | https://www.eia.gov/opendata/ | REST API (free API key) | US government data, free to use (confirm terms) | None |  |  |  |  |  |  |  |
+| 4 · Essential | searoute | D | https://pypi.org/project/searoute/ | `pip install` | TBD (check the package and its bundled network data) | None |  |  |  |  |  |  |  |
+| 5 · Recommended | Global Fishing Watch | D | https://globalfishingwatch.org/data-download/ (API: https://globalfishingwatch.org/our-apis/) | Registered download / API token | CC-BY-NC (research) | Low (vessel identifiers only) |  |  |  |  |  |  |  |
+| 6 · Recommended | NGA World Port Index | A | https://msi.nga.mil/Publications/WPI | Public download | US government, public (confirm) | None |  |  |  |  |  |  |  |
+| 7 · Optional | World Bank Commodity Prices | C | https://www.worldbank.org/en/research/commodity-markets | Monthly XLS | Public (confirm terms) | None |  |  |  |  |  |  |  |
+| 8 · Optional | Natural Earth (coastlines, borders) | Unassigned | https://www.naturalearthdata.com/ | Public download | Public domain | None |  |  |  |  |  |  |  |
+| 9 · Optional | JODI-Oil | B | https://www.jodidata.org/ | Public download | TBD | None |  |  |  |  |  |  |  |
+| 10 · Redundant | FRED (Brent mirror) | — | https://fred.stlouisfed.org/ | REST API (free API key) | Free (confirm series terms) | None | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| 11 · Dropped | MarineCadastre (US AIS) | — | https://marinecadastre.gov/ais/ | Free bulk download by year/month | Public | None | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
-**Priority guide.** *Essential* sources (1–4) are the minimum to build the graph, flow model, validation, and price model. *Recommended* sources (5–6) deliver the delay, transit-time, and port-matching attributes in the full scope. *Optional* sources (7–9) are convenience or cross-checks and are the first to cut under time pressure. *Redundant* and *Dropped* sources are kept in the register so the decision is auditable. In Week 1, vet Essential sources first. PortWatch and Comtrade are single points of failure: if either fails its checks, raise it to the PM immediately.
+### Priority guide
 
-**Filling in the blank columns (Week 1).** Each subteam fills the blank cells for its own rows (see the Owner column and [`TEAMS.md`](TEAMS.md)). Record exact field names, coverage, update frequency and lag, quota and API key requirements, the check result, and the link to your pull request. Update the table through a pull request (a git merge request) into the integration branch, following [`CONTRIBUTING.md`](CONTRIBUTING.md). If a value is unknown, write `TBD` and say why in the pull request. Cells marked `n/a` are not used. Never commit data.
+- **Essential (1–4):** the minimum to build the graph, flow model, validation, and price model.
+- **Recommended (5–6):** deliver the delay, transit-time, and port-matching attributes in the full scope.
+- **Optional (7–9):** convenience or cross-checks; the first sources to cut under time pressure.
+- **Redundant and Dropped:** kept in the register so the decision is auditable.
+
+In Week 1, vet Essential sources first. PortWatch and Comtrade are single points of failure: if either fails its checks, raise it to the PM immediately.
+
+### How to fill in the table
+
+1. Find your rows using the **Owner** column (see [`TEAMS.md`](TEAMS.md)).
+2. Fill every blank cell in those rows, using the column guide below. If a value is unknown, write `TBD: <reason>`.
+3. Update the table through a pull request (a git merge request) into the integration branch, following [`CONTRIBUTING.md`](CONTRIBUTING.md). Put the pull request number in the **Pull request** column.
+4. Never commit data. Commit `DATA.md` and your scripts only.
+
+### Column guide
+
+| Column | What to write | Format example (placeholders) |
+|---|---|---|
+| Exact fields confirmed | Exact field names from the source's data dictionary for the metrics we need (see [Exact metrics](#exact-metrics-to-pull-from-each-source)) | `[exact_field_name]; [exact_field_name]` |
+| Coverage | Regions, years, vessel types included, and known gaps | `[regions]; [years]; [vessel types]; gap: [describe]` |
+| Update frequency and lag | How often the source refreshes and how stale the latest value is | `[how often]; about [N] days behind` |
+| Quota / API key | Registration, key, and rate limits | `[key required?]; [N] requests per day`, or `TBD: waiting on token approval` |
+| Check result (pass / fail) | The result of your Week 1 check, plus one line of why | `pass: [one line why]` |
+| Pull request | Pull request number | `#[number]` |
+| Notes (members) | Anything surprising: gaps, quirks, license caveats | Free text |
+
+### Source notes
+
+- **IMF PortWatch** (Essential): **Backbone of the project.** AIS-derived daily port calls and import/export volume estimates by vessel type, plus daily chokepoint transit calls and trade estimates (~28 chokepoints; verify the current list, including Suez, Bab-el-Mandeb, and Cape of Good Hope). Updated weekly (verify). Volumes are estimates, not measurements. **Without it there is no project.**
+- **UN Comtrade** (Essential): Bilateral crude oil flows (HS 2709) by country. Anchors the origin-destination demand matrix. Months of lag; mirror mismatches between exporter and importer reports are common. Without it, the OD matrix falls back to PortWatch port volumes alone and loses its country-to-country structure.
+- **EIA Open Data (Brent, WTI)** (Essential): Daily Brent price: the target of the oil price model. Also publishes chokepoint oil-flow figures used to calibrate the crude share. Replaces FRED as the single Brent source.
+- **searoute** (Essential): Sea distances and route geometry between nodes. Spot-check against published port-to-port distances. Without it the team must build its own sea routing.
+- **Global Fishing Watch** (Recommended): Port-visit events for all vessel types, including tankers, with vessel identity. Used for ship-level tracing, port-to-port transit times, and delay validation (a **sample**, not the full fleet). Registration required; check API quotas. Non-commercial: attribute properly and don't ship it in a commercial product. Without it, transit days and delay become `modeled` only and one validation channel is lost; the core model still runs.
+- **NGA World Port Index** (Recommended): Port locations and attributes to name and place port nodes, and to match ports across sources. Check which fields (e.g., channel depth) are available. If PortWatch already carries port locations, the main loss without it is the vessel-size-limit attribute.
+- **World Bank Commodity Prices** (Optional): Monthly crude price history (Brent, Dubai, WTI) as a cross-check on Brent. Adds little once daily EIA data is in place.
+- **Natural Earth (coastlines, borders)** (Optional): Custom base layers for the map. Kepler.gl and PyDeck already include basemaps, so adopt only if custom layers are wanted.
+- **JODI-Oil** (Optional): Second source to cross-check Comtrade oil trade totals. Adopt only if Comtrade proves gappy for key oil exporters. Verify license before adopting.
+- **FRED (Brent mirror)** (Redundant): Mirror of the EIA daily Brent series. **Do not adopt; use EIA.**
+- **MarineCadastre (US AIS)** (Dropped): **Dropped.** US waters only and very large; nothing in the core plan needs it. Reconsider only as an optional extension for detailed validation around US Gulf Coast crude export ports.
 
 ## How to think about using each source
 
-- **PortWatch is the backbone, so there is no raw AIS to process.** It already aggregates AIS into daily counts, which is what makes the project laptop-friendly. Chokepoint transit counts are the most observation-like numbers in the project; volume figures are model estimates.
+- **PortWatch is the backbone, so there is no raw AIS to process.** It already aggregates AIS into daily counts. Chokepoint transit counts are the most observation-like numbers in the project; volume figures are model estimates.
 - **"Tanker" is not "crude."** PortWatch tanker volumes include refined products and chemicals. Document the crude-share assumption you use and keep it explicit and adjustable.
 - **Observed vs. modeled.** Real data exists only at chokepoints, ports, and a sample of tracked ships. Every dynamic attribute carries a `source` field (`observed` or `modeled`), and the dashboard shows it. Never present modeled values as measurements.
 - **Spoofing / noise.** Ship-level data from Global Fishing Watch has gaps, spoofed signals, and "dark" tankers that switch AIS off. Filter port visits by confidence, and don't chase every anomaly. Test it on a set of known tankers before relying on it.
@@ -101,7 +139,8 @@ Every assumption listed here must be written down with its value and source in W
 | Edge delay (congestion) | Free-flow time × (1 + α × (flow ÷ capacity)^β) − free-flow time, a standard congestion curve. α and β are calibrated on the 2023–24 Red Sea observations. Route delay is the sum of edge delays. |
 | Scenario utilization and anomaly | The utilization and anomaly formulas above, applied to scenario flow. Every dynamic tanker metric is therefore a model output on every edge, for baseline and scenario. v1 models tankers only; other vessel types are observed at chokepoints but not predicted. |
 | Shipping cost per barrel | (extra voyage days × assumed tanker daily cost ÷ barrels per cargo) + change in canal toll per barrel. Daily cost and cargo size are documented as low / base / high assumptions from public sources. |
-| Price-model indices | (1) Suez tanker share = Suez ÷ (Suez + Cape of Good Hope) tanker transits. (2) Barrel-weighted average voyage days = Σ(flow × days) ÷ Σ flow. (3) Rerouted ton-miles = Σ over edges (change in flow × length). Defined identically for history and for scenarios. |
+| Price-model indices | (1) Suez tanker share = Suez ÷ (Suez + Cape of Good Hope) tanker transits. (2) Barrel-weighted average voyage days = Σ(flow × days) ÷ Σ flow. (3) Rerouted ton-miles = Σ over edges (change in flow × length). Defined identically for history and for scenarios. Edge-level GNN predictions are aggregated into these indices (plus low-dimensional GNN summaries) as price-model features. |
+| GNN training set | Two labeled parts. **Simulated:** for each edge closed or throttled, the flow model's per-edge metrics for baseline and scenario (tagged `simulated`). **Real:** PortWatch weekly series at chokepoint and port nodes from 2019 to present, including the 2023–24 Red Sea diversions (tagged `observed`). Time-based splits; Ever Given, Panama, and some chokepoints are held out for evaluation. |
 | Brent target | Weekly average of daily Brent, modeled as log return or level. Benchmark: random walk. |
 
 ## Local layout convention
