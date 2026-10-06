@@ -77,6 +77,8 @@ See [`DELIVERABLES.md`](DELIVERABLES.md) for the suggested deliverable breakdown
 | [`DELIVERABLES.md`](DELIVERABLES.md) | Suggested deliverables and rough timeline. A living plan, not a contract. |
 | [`DATA.md`](DATA.md) | Suggested data sources, how to access them, and the source register. |
 | [`TEAMS.md`](TEAMS.md) | Subteam structure, source ownership, and the pipeline build plan for Weeks 1–2. |
+| [`FIRST_DELIVERABLE.md`](FIRST_DELIVERABLE.md) | The first deliverable: what is due, who does what, and what data we need from each source. |
+| [`GITHUB_GUIDE.md`](GITHUB_GUIDE.md) | A short, step-by-step guide to the GitHub workflow for members. |
 | [`data/`](data/) | Local working folder for datasets. **Git-ignored** — data is never committed. |
 | [`AGENTS.md`](AGENTS.md) | Machine-facing workflow rules for AI coding agents. |
 | [`CODEOWNERS`](CODEOWNERS) | **Team roster + review policy.** The PM, members, and the code-owner rule for PRs into `main`. |
@@ -93,4 +95,4 @@ This README, [`DELIVERABLES.md`](DELIVERABLES.md), and [`DATA.md`](DATA.md) are 
 
 ## Notes for members
 
-Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before touching code. Then pick up an issue from the board.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before touching code ([`GITHUB_GUIDE.md`](GITHUB_GUIDE.md) is the short version). Then pick up an issue from the board.
