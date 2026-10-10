@@ -18,7 +18,7 @@ This table is the source register, ordered by necessity. The first seven columns
 | 6 · Recommended | NGA World Port Index | A | https://msi.nga.mil/Publications/WPI | Public download | US government, public (confirm) | None |  |  |  |  |  |  |  |
 | 7 · Optional | World Bank Commodity Prices | C | https://www.worldbank.org/en/research/commodity-markets | Monthly XLS | Public (confirm terms) | None |  |  |  |  |  |  |  |
 | 8 · Optional | Natural Earth (coastlines, borders) | Unassigned | https://www.naturalearthdata.com/ | Public download | Public domain | None |  |  |  |  |  |  |  |
-| 9 · Optional | JODI-Oil | B | https://www.jodidata.org/ | Public download | TBD | None |  |  |  |  |  |  |  |
+| 9 · Optional | JODI-Oil | B | https://www.jodidata.org/ | Public download | TBD: Terms not found on site | None | counry, product, flow, unit, date (yyyy-MM), quantity, quality | 96 countries (2026), 2026-01 to 2026-07, only 57 out of 96 countries with numeric exports (KBD; RU, IQ, AE, IN have none) | TBD; newest month file is 2026-07, some countries stop earlier | Free JODI website account required. Log in for a token valid for 1 hour, 100 requests per munute per user |  |  |  |
 | 10 · Redundant | FRED (Brent mirror) | — | https://fred.stlouisfed.org/ | REST API (free API key) | Free (confirm series terms) | None | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 | 11 · Dropped | MarineCadastre (US AIS) | — | https://marinecadastre.gov/ais/ | Free bulk download by year/month | Public | None | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
