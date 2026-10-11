@@ -10,7 +10,7 @@ This table is the source register, ordered by necessity. The first seven columns
 
 | Priority | Source | Owner (subteam) | Origin / URL | Access method | License | Sensitivity | Exact fields confirmed | Coverage (regions, years, vessel types) | Update frequency and lag | Quota / API key | Check result (pass / fail) | Pull request | Notes (members) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 · Essential | IMF PortWatch | A | https://portwatch.imf.org/ | Free download / API | IMF data terms: free with attribution; commercial reuse needs permission (verify PortWatch page-specific terms) | None |  |  |  |  |  |  |  |
+| 1 · Essential | IMF PortWatch | A | https://portwatch.imf.org/ | Free download / API | IMF data terms: free with attribution; commercial reuse needs permission (verify PortWatch page-specific terms) | None | date; portid; portname; country; portcalls_container; portcalls_dry_bulk; portcalls_general_cargo; portcalls_roro; portcalls_tanker; import_container; import_dry_bulk; import_general_cargo; import_roro; import_tanker | global coverage; 2019–2026; container, dry bulk, general cargo, roro, tanker | weekly; about 5 days behind | no; N/A |  |  |  |
 | 2 · Essential | UN Comtrade | B | https://comtrade.un.org/ | REST API (free API key) | Attribution — free tier | None |  |  |  |  |  |  |  |
 | 3 · Essential | EIA Open Data (Brent, WTI) | C | https://www.eia.gov/opendata/ | REST API (free API key) | US government data, free to use (confirm terms) | None |  |  |  |  |  |  |  |
 | 4 · Essential | searoute | D | https://pypi.org/project/searoute/ | `pip install` | TBD (check the package and its bundled network data) | None |  |  |  |  |  |  |  |
