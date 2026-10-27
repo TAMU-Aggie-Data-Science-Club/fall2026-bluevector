@@ -25,3 +25,7 @@ __pycache__/
 venv/
 .env
 .ipynb_checkpoints/
+
+# UN Comtrade datasets (keep local copies only)
+data/raw/
+data/processed/
