@@ -5,7 +5,7 @@ Needs: pip install searoute pandas
 
 Inputs, looked up next to this script first, then in the current folder:
   edges_core.csv (or edges.csv)  one row per edge: edge_id, from_node, to_node, edge_type, ...
-  junction.csv                   node_id, lat, lon      (the 15-20 junctions)
+  junctions.csv                   node_id, lat, lon      (the 15-20 junctions)
   ports_selected.csv             node_id, lat, lon      (from select_ports.py; node_id is port_<portid>)
   nodes.csv                      node_id, lat, lon      (optional: any other nodes)
 
@@ -31,7 +31,7 @@ import pandas as pd
 import searoute as sr
 
 HERE = Path(__file__).resolve().parent
-NODE_FILES = ["junction.csv", "ports_selected.csv", "nodes.csv"]
+NODE_FILES = ["junctions.csv", "ports_selected.csv", "nodes.csv"]
 EDGES_INPUTS = ["edges_core.csv", "edges.csv"]
 EDGES_OUTPUT_NAME = "edges.csv"
 SPEED_KNOTS = 13
