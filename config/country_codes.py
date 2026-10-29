@@ -4,15 +4,20 @@ Deliverable 2, task 2. Joins on ISO3. Every Comtrade code (reporter or partner,
 still valid in 2019 or later) and every PortWatch country gets one row, with a
 status that says whether it matched and, if not, why.
 
-Run from the repo root:  python scripts/country_codes.py
-Needs: pandas, requests.
+Run from the repo root:
+  python scripts/country_codes.py            # uses cached raw JSON if present
+  python scripts/country_codes.py --refresh  # re-download from APIs
+Needs: pandas, pyarrow, requests.
 
-Outputs (git-ignored):
+Outputs:
   data/raw/comtrade_reporters.json, data/raw/comtrade_partners.json,
-  data/raw/portwatch_countries.json   - API responses as downloaded
-  data/processed/country_codes.csv    - the crosswalk
+  data/raw/portwatch_countries.json          - API responses as downloaded (git-ignored)
+  data/processed/country_codes.csv           - the crosswalk (git-ignored)
+  data/interim/country_codes.parquet         - cleaned Parquet in data/interim/ (git-ignored)
+  config/country_codes.csv                   - reference crosswalk for git commit
 """
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -22,7 +27,9 @@ import requests
 
 ROOT = Path(__file__).resolve().parents[1]
 RAW = ROOT / "data" / "raw"
+INTERIM = ROOT / "data" / "interim"
 PROCESSED = ROOT / "data" / "processed"
+CONFIG = ROOT / "config"
 
 COMTRADE_REF = "https://comtradeapi.un.org/files/v1/app/reference/{}"
 PORTWATCH_COUNTRIES = (
@@ -50,7 +57,10 @@ FOLDED_INTO_PARENT = {
 COMTRADE_SPECIAL_CODES = {0, 837, 838, 839, 899}
 
 
-def fetch_json(url, out_path, params=None):
+def fetch_json(url, out_path, params=None, refresh=False):
+    if out_path.exists() and not refresh:
+        print(f"Using cached {out_path.relative_to(ROOT)} (use --refresh to re-pull)")
+        return json.loads(out_path.read_text(encoding="utf-8"))
     resp = requests.get(url, params=params, timeout=120)
     resp.raise_for_status()
     data = resp.json()
@@ -58,11 +68,11 @@ def fetch_json(url, out_path, params=None):
     return data
 
 
-def load_comtrade():
+def load_comtrade(refresh=False):
     """One row per Comtrade code, combining the reporter and partner lists."""
     frames = []
     for kind, fname in [("reporter", "Reporters.json"), ("partner", "partnerAreas.json")]:
-        data = fetch_json(COMTRADE_REF.format(fname), RAW / f"comtrade_{kind}s.json")
+        data = fetch_json(COMTRADE_REF.format(fname), RAW / f"comtrade_{kind}s.json", refresh=refresh)
         df = pd.DataFrame(data["results"])
         # Partner file capitalizes its keys (PartnerCode); normalize both.
         df.columns = [c[0].lower() + c[1:] for c in df.columns]
@@ -95,12 +105,13 @@ def load_comtrade():
     return ct
 
 
-def load_portwatch():
+def load_portwatch(refresh=False):
     data = fetch_json(
         PORTWATCH_COUNTRIES,
         RAW / "portwatch_countries.json",
         params={"where": "1=1", "outFields": "country,ISO3,economy_type",
                 "returnGeometry": "false", "f": "json"},
+        refresh=refresh,
     )
     if "error" in data or data.get("exceededTransferLimit"):
         raise RuntimeError(f"PortWatch query incomplete: {data.get('error')}")
@@ -174,14 +185,26 @@ def build_table(ct, pw):
 
 
 def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--refresh", action="store_true", help="Re-download reference JSONs even if cached")
+    args = ap.parse_args()
+
     RAW.mkdir(parents=True, exist_ok=True)
+    INTERIM.mkdir(parents=True, exist_ok=True)
     PROCESSED.mkdir(parents=True, exist_ok=True)
+    CONFIG.mkdir(parents=True, exist_ok=True)
 
-    table = build_table(load_comtrade(), load_portwatch())
-    out = PROCESSED / "country_codes.csv"
-    table.to_csv(out, index=False, encoding="utf-8")
+    table = build_table(load_comtrade(refresh=args.refresh), load_portwatch(refresh=args.refresh))
 
-    print(f"Wrote {out.relative_to(ROOT)} ({len(table)} rows)")
+    out_processed = PROCESSED / "country_codes.csv"
+    out_interim = INTERIM / "country_codes.parquet"
+    out_config = CONFIG / "country_codes.csv"
+
+    table.to_csv(out_processed, index=False, encoding="utf-8")
+    table.to_parquet(out_interim, index=False)
+    table.to_csv(out_config, index=False, encoding="utf-8")
+
+    print(f"Wrote {out_processed.relative_to(ROOT)}, {out_interim.relative_to(ROOT)}, and {out_config.relative_to(ROOT)} ({len(table)} rows)")
     print(table.groupby(["status", "note"], dropna=False).size().to_string())
 
     unmatched = table[table["status"].isin(["portwatch_only", "comtrade_only"])

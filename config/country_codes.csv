@@ -1,0 +1,298 @@
+status,match_method,comtrade_code,comtrade_name,comtrade_iso3,in_reporters,in_partners,portwatch_country,portwatch_iso3,portwatch_economy_type,note
+matched,iso3,8,Albania,ALB,True,True,Albania,ALB,country,
+matched,iso3,12,Algeria,DZA,True,True,Algeria,DZA,country,
+matched,iso3,16,American Samoa,ASM,False,True,American Samoa,ASM,country,
+matched,iso3,24,Angola,AGO,True,True,Angola,AGO,country,
+matched,iso3,660,Anguilla,AIA,True,True,Anguilla,AIA,country,
+matched,iso3,28,Antigua and Barbuda,ATG,True,True,Antigua and Barbuda,ATG,country,
+matched,iso3,32,Argentina,ARG,True,True,Argentina,ARG,country,
+matched,iso3,533,Aruba,ABW,True,True,Aruba,ABW,country,
+matched,iso3,36,Australia,AUS,True,True,Australia,AUS,country,
+matched,iso3,31,Azerbaijan,AZE,True,True,Azerbaijan,AZE,country,
+matched,iso3,44,Bahamas,BHS,True,True,The Bahamas,BHS,country,
+matched,iso3,48,Bahrain,BHR,True,True,Bahrain,BHR,country,
+matched,iso3,50,Bangladesh,BGD,True,True,Bangladesh,BGD,country,
+matched,iso3,52,Barbados,BRB,True,True,Barbados,BRB,country,
+matched,iso3,56,Belgium,BEL,True,True,Belgium,BEL,country,
+matched,iso3,84,Belize,BLZ,True,True,Belize,BLZ,country,
+matched,iso3,204,Benin,BEN,True,True,Benin,BEN,country,
+matched,iso3,535,Bonaire,BES,True,True,"Bonaire,  Saint Eustatius and Saba",BES,country,
+matched,iso3,92,Br. Virgin Isds,VGB,True,True,British Virgin Islands,VGB,country,
+matched,iso3,76,Brazil,BRA,True,True,Brazil,BRA,country,
+matched,iso3,96,Brunei Darussalam,BRN,True,True,Brunei Darussalam,BRN,country,
+matched,iso3,100,Bulgaria,BGR,True,True,Bulgaria,BGR,country,
+matched,iso3,132,Cabo Verde,CPV,True,True,Cabo Verde,CPV,country,
+matched,iso3,116,Cambodia,KHM,True,True,Cambodia,KHM,country,
+matched,iso3,120,Cameroon,CMR,True,True,Cameroon,CMR,country,
+matched,iso3,124,Canada,CAN,True,True,Canada,CAN,country,
+matched,iso3,136,Cayman Isds,CYM,True,True,Cayman Islands,CYM,country,
+matched,iso3,152,Chile,CHL,True,True,Chile,CHL,country,
+matched,iso3,156,China,CHN,True,True,China,CHN,country,
+matched,iso3,344,"China, Hong Kong SAR",HKG,True,True,Hong Kong SAR,HKG,country,
+matched,iso3,446,"China, Macao SAR",MAC,True,True,Macao SAR,MAC,country,
+matched,iso3,170,Colombia,COL,True,True,Colombia,COL,country,
+matched,iso3,174,Comoros,COM,True,True,Comoros,COM,country,
+matched,iso3,178,Congo,COG,True,True,Republic of Congo,COG,country,
+matched,iso3,184,Cook Isds,COK,True,True,Cook Islands,COK,country,
+matched,iso3,188,Costa Rica,CRI,True,True,Costa Rica,CRI,country,
+matched,iso3,191,Croatia,HRV,True,True,Croatia,HRV,country,
+matched,iso3,192,Cuba,CUB,True,True,Cuba,CUB,country,
+matched,iso3,531,Curaçao,CUW,True,True,Curaçao,CUW,country,
+matched,iso3,196,Cyprus,CYP,True,True,Cyprus,CYP,country,
+matched,iso3,384,Côte d'Ivoire,CIV,True,True,Côte d'Ivoire,CIV,country,
+matched,iso3,180,Dem. Rep. of the Congo,COD,True,True,Democratic Republic of the Congo,COD,country,
+matched,iso3,208,Denmark,DNK,True,True,Denmark,DNK,country,
+matched,iso3,262,Djibouti,DJI,True,True,Djibouti,DJI,country,
+matched,iso3,212,Dominica,DMA,True,True,Dominica,DMA,country,
+matched,iso3,214,Dominican Rep.,DOM,True,True,Dominican Republic,DOM,country,
+matched,iso3,218,Ecuador,ECU,True,True,Ecuador,ECU,country,
+matched,iso3,818,Egypt,EGY,True,True,Egypt,EGY,country,
+matched,iso3,222,El Salvador,SLV,True,True,El Salvador,SLV,country,
+matched,iso3,226,Equatorial Guinea,GNQ,True,True,Equatorial Guinea,GNQ,country,
+matched,iso3,232,Eritrea,ERI,True,True,Eritrea,ERI,country,
+matched,iso3,233,Estonia,EST,True,True,Estonia,EST,country,
+matched,iso3,583,FS Micronesia,FSM,True,True,Micronesia,FSM,country,
+matched,iso3,234,Faroe Isds,FRO,True,True,Faroe Islands,FRO,country,
+matched,iso3,242,Fiji,FJI,True,True,Fiji,FJI,country,
+matched,iso3,246,Finland,FIN,True,True,Finland,FIN,country,
+matched,iso3,251,France,FRA,True,True,France,FRA,country,
+matched,iso3,258,French Polynesia,PYF,True,True,French Polynesia,PYF,country,
+matched,iso3,266,Gabon,GAB,True,True,Gabon,GAB,country,
+matched,iso3,270,Gambia,GMB,True,True,The Gambia,GMB,country,
+matched,iso3,268,Georgia,GEO,True,True,Georgia,GEO,country,
+matched,iso3,276,Germany,DEU,True,True,Germany,DEU,country,
+matched,iso3,288,Ghana,GHA,True,True,Ghana,GHA,country,
+matched,iso3,292,Gibraltar,GIB,True,True,Gibraltar,GIB,country,
+matched,iso3,300,Greece,GRC,True,True,Greece,GRC,country,
+matched,iso3,308,Grenada,GRD,True,True,Grenada,GRD,country,
+matched,iso3,316,Guam,GUM,False,True,Guam,GUM,country,
+matched,iso3,320,Guatemala,GTM,True,True,Guatemala,GTM,country,
+matched,iso3,324,Guinea,GIN,True,True,Guinea,GIN,country,
+matched,iso3,624,Guinea-Bissau,GNB,True,True,Guinea-Bissau,GNB,country,
+matched,iso3,328,Guyana,GUY,True,True,Guyana,GUY,country,
+matched,iso3,332,Haiti,HTI,True,True,Haiti,HTI,country,
+matched,iso3,340,Honduras,HND,True,True,Honduras,HND,country,
+matched,iso3,352,Iceland,ISL,True,True,Iceland,ISL,country,
+matched,iso3,699,India,IND,True,True,India,IND,country,
+matched,iso3,360,Indonesia,IDN,True,True,Indonesia,IDN,country,
+matched,iso3,364,Iran,IRN,True,True,Iran,IRN,country,
+matched,iso3,368,Iraq,IRQ,True,True,Iraq,IRQ,country,
+matched,iso3,372,Ireland,IRL,True,True,Ireland,IRL,country,
+matched,iso3,376,Israel,ISR,True,True,Israel,ISR,country,
+matched,iso3,380,Italy,ITA,True,True,Italy,ITA,country,
+matched,iso3,388,Jamaica,JAM,True,True,Jamaica,JAM,country,
+matched,iso3,392,Japan,JPN,True,True,Japan,JPN,country,
+matched,iso3,400,Jordan,JOR,True,True,Jordan,JOR,country,
+matched,iso3,398,Kazakhstan,KAZ,True,True,Kazakhstan,KAZ,country,
+matched,iso3,404,Kenya,KEN,True,True,Kenya,KEN,country,
+matched,iso3,296,Kiribati,KIR,True,True,Kiribati,KIR,country,
+matched,iso3,414,Kuwait,KWT,True,True,Kuwait,KWT,country,
+matched,iso3,428,Latvia,LVA,True,True,Latvia,LVA,country,
+matched,iso3,422,Lebanon,LBN,True,True,Lebanon,LBN,country,
+matched,iso3,430,Liberia,LBR,True,True,Liberia,LBR,country,
+matched,iso3,434,Libya,LBY,True,True,Libya,LBY,country,
+matched,iso3,440,Lithuania,LTU,True,True,Lithuania,LTU,country,
+matched,iso3,450,Madagascar,MDG,True,True,Madagascar,MDG,country,
+matched,iso3,458,Malaysia,MYS,True,True,Malaysia,MYS,country,
+matched,iso3,462,Maldives,MDV,True,True,Maldives,MDV,country,
+matched,iso3,470,Malta,MLT,True,True,Malta,MLT,country,
+matched,iso3,584,Marshall Isds,MHL,True,True,Marshall Islands,MHL,country,
+matched,iso3,474,Martinique (Overseas France),MTQ,True,True,Martinique,MTQ,country,
+matched,iso3,478,Mauritania,MRT,True,True,Mauritania,MRT,country,
+matched,iso3,480,Mauritius,MUS,True,True,Mauritius,MUS,country,
+matched,iso3,484,Mexico,MEX,True,True,Mexico,MEX,country,
+matched,iso3,499,Montenegro,MNE,True,True,Montenegro,MNE,country,
+matched,iso3,500,Montserrat,MSR,True,True,Montserrat,MSR,country,
+matched,iso3,504,Morocco,MAR,True,True,Morocco,MAR,country,
+matched,iso3,508,Mozambique,MOZ,True,True,Mozambique,MOZ,country,
+matched,iso3,104,Myanmar,MMR,True,True,Myanmar,MMR,country,
+matched,iso3,580,N. Mariana Isds,MNP,True,True,Northern Mariana Islands,MNP,country,
+matched,iso3,516,Namibia,NAM,True,True,Namibia,NAM,country,
+matched,iso3,520,Naoero,NRU,True,True,Nauru,NRU,country,
+matched,iso3,528,Netherlands,NLD,True,True,The Netherlands,NLD,country,
+matched,iso3,540,New Caledonia,NCL,True,True,New Caledonia,NCL,country,
+matched,iso3,554,New Zealand,NZL,True,True,New Zealand,NZL,country,
+matched,iso3,558,Nicaragua,NIC,True,True,Nicaragua,NIC,country,
+matched,iso3,566,Nigeria,NGA,True,True,Nigeria,NGA,country,
+matched,iso3,579,Norway,NOR,True,True,Norway,NOR,country,
+matched,iso3,512,Oman,OMN,True,True,Oman,OMN,country,
+matched,manual,490,"Other Asia, nes",S19,True,True,Taiwan Province of China,TWN,country,"Taiwan; Comtrade reports it as Other Asia, nes"
+matched,iso3,586,Pakistan,PAK,True,True,Pakistan,PAK,country,
+matched,iso3,585,Palau,PLW,True,True,Palau,PLW,country,
+matched,iso3,591,Panama,PAN,True,True,Panama,PAN,country,
+matched,iso3,598,Papua New Guinea,PNG,True,True,Papua New Guinea,PNG,country,
+matched,iso3,604,Peru,PER,True,True,Peru,PER,country,
+matched,iso3,608,Philippines,PHL,True,True,Philippines,PHL,country,
+matched,iso3,616,Poland,POL,True,True,Poland,POL,country,
+matched,iso3,620,Portugal,PRT,True,True,Portugal,PRT,country,
+matched,iso3,630,Puerto Rico,PRI,False,True,Puerto Rico,PRI,country,
+matched,iso3,634,Qatar,QAT,True,True,Qatar,QAT,country,
+matched,iso3,410,Rep. of Korea,KOR,True,True,Korea,KOR,country,
+matched,iso3,498,Rep. of Moldova,MDA,True,True,Moldova,MDA,country,
+matched,iso3,642,Romania,ROU,True,True,Romania,ROU,country,
+matched,iso3,643,Russian Federation,RUS,True,True,Russian Federation,RUS,country,
+matched,iso3,652,Saint Barthélemy,BLM,True,True,Saint-Barthélemy,BLM,country,
+matched,iso3,659,Saint Kitts and Nevis,KNA,True,True,St.  Kitts and Nevis,KNA,country,
+matched,iso3,662,Saint Lucia,LCA,True,True,St.  Lucia,LCA,country,
+matched,iso3,534,Saint Maarten,SXM,True,True,Sint Maarten,SXM,country,
+matched,iso3,663,Saint Martin (French part),MAF,False,True,Saint Martin,MAF,country,
+matched,iso3,670,Saint Vincent and the Grenadines,VCT,True,True,St.  Vincent and the Grenadines,VCT,country,
+matched,iso3,882,Samoa,WSM,True,True,Samoa,WSM,country,
+matched,iso3,678,Sao Tome and Principe,STP,True,True,São Tomé and Príncipe,STP,country,
+matched,iso3,682,Saudi Arabia,SAU,True,True,Saudi Arabia,SAU,country,
+matched,iso3,686,Senegal,SEN,True,True,Senegal,SEN,country,
+matched,iso3,690,Seychelles,SYC,True,True,Seychelles,SYC,country,
+matched,iso3,694,Sierra Leone,SLE,True,True,Sierra Leone,SLE,country,
+matched,iso3,702,Singapore,SGP,True,True,Singapore,SGP,country,
+matched,iso3,705,Slovenia,SVN,True,True,Slovenia,SVN,country,
+matched,iso3,90,Solomon Isds,SLB,True,True,Solomon Islands,SLB,country,
+matched,iso3,706,Somalia,SOM,True,True,Somalia,SOM,country,
+matched,iso3,710,South Africa,ZAF,True,True,South Africa,ZAF,country,
+matched,iso3,724,Spain,ESP,True,True,Spain,ESP,country,
+matched,iso3,144,Sri Lanka,LKA,True,True,Sri Lanka,LKA,country,
+matched,iso3,729,Sudan,SDN,True,True,Sudan,SDN,country,
+matched,iso3,740,Suriname,SUR,True,True,Suriname,SUR,country,
+matched,iso3,752,Sweden,SWE,True,True,Sweden,SWE,country,
+matched,iso3,760,Syria,SYR,True,True,Syria,SYR,country,
+matched,iso3,764,Thailand,THA,True,True,Thailand,THA,country,
+matched,iso3,626,Timor-Leste,TLS,True,True,Timor-Leste,TLS,country,
+matched,iso3,768,Togo,TGO,True,True,Togo,TGO,country,
+matched,iso3,776,Tonga,TON,True,True,Tonga,TON,country,
+matched,iso3,780,Trinidad and Tobago,TTO,True,True,Trinidad and Tobago,TTO,country,
+matched,iso3,788,Tunisia,TUN,True,True,Tunisia,TUN,country,
+matched,iso3,795,Turkmenistan,TKM,True,True,Turkmenistan,TKM,country,
+matched,iso3,796,Turks and Caicos Isds,TCA,True,True,Turks and Caicos Islands,TCA,country,
+matched,iso3,798,Tuvalu,TUV,True,True,Tuvalu,TUV,country,
+matched,iso3,792,Türkiye,TUR,True,True,Türkiye,TUR,country,
+matched,iso3,842,USA,USA,True,True,United States,USA,country,
+matched,iso3,804,Ukraine,UKR,True,True,Ukraine,UKR,country,
+matched,iso3,784,United Arab Emirates,ARE,True,True,United Arab Emirates,ARE,country,
+matched,iso3,826,United Kingdom,GBR,True,True,United Kingdom,GBR,country,
+matched,iso3,834,United Rep. of Tanzania,TZA,True,True,Tanzania,TZA,country,
+matched,iso3,858,Uruguay,URY,True,True,Uruguay,URY,country,
+matched,iso3,548,Vanuatu,VUT,True,True,Vanuatu,VUT,country,
+matched,iso3,862,Venezuela,VEN,True,True,Venezuela,VEN,country,
+matched,iso3,704,Viet Nam,VNM,True,True,Vietnam,VNM,country,
+matched,iso3,887,Yemen,YEM,True,True,Yemen,YEM,country,
+portwatch_only,none,,,,,,ASEAN-10,513,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,ASEAN-5,510,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Advanced Economies,110,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Asian Advanced Economies excluding Japan,511,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Asian Emerging Markets excluding China,512,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Emerging Market and Developing Economies,200,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Emerging and Developing Asia,505,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Emerging and Developing Europe,903,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Euro Area,163,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,European Union,998,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,French Guiana,GUF,country,Reported by Comtrade under France (251) since 1997
+portwatch_only,none,,,,,,Guadeloupe,GLP,country,Reported by Comtrade under France (251) since 1997
+portwatch_only,none,,,,,,Latin America and the Caribbean,205,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Major Advanced Economies (G7),119,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Mayotte,MYT,country,Reported by Comtrade under France (251) since 2014
+portwatch_only,none,,,,,,Middle East and Central Asia,400,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Other Advanced Economies (Advanced Economies excluding G7 and Euro Area),123,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,Réunion,REU,country,Reported by Comtrade under France (251) since 1997
+portwatch_only,none,,,,,,Sub-Saharan Africa,603,region,PortWatch regional/global aggregate
+portwatch_only,none,,,,,,United States Virgin Islands,VIR,country,Reported by Comtrade under USA (842) since 1981
+portwatch_only,none,,,,,,World,WLD,global,PortWatch regional/global aggregate
+comtrade_only,none,975,ASEAN,R4,True,False,,,,Comtrade aggregate or special code
+comtrade_only,none,4,Afghanistan,AFG,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,472,"Africa CAMEU region, nes",_AC,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,20,Andorra,AND,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,10,Antarctica,ATA,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,899,"Areas, nes",_X,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,51,Armenia,ARM,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,40,Austria,AUT,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,112,Belarus,BLR,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,60,Bermuda,BMU,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,64,Bhutan,BTN,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,68,Bolivia (Plurinational State of),BOL,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,70,Bosnia Herzegovina,BIH,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,72,Botswana,BWA,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,74,Bouvet Island,BVT,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,80,Br. Antarctic Terr.,ATB,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,86,Br. Indian Ocean Terr.,IOT,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,837,Bunkers,X1,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,854,Burkina Faso,BFA,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,108,Burundi,BDI,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,471,"CACM, nes",R91,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,129,"Caribbean, nes",A49,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,140,Central African Rep.,CAF,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,148,Chad,TCD,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,830,Channel Islands,_CI,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,162,Christmas Isds,CXR,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,166,Cocos Isds,CCK,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,203,Czechia,CZE,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,408,Dem. People's Rep. of Korea,PRK,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,221,"Eastern Europe, nes",E29,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,748,Eswatini,SWZ,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,231,Ethiopia,ETH,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,697,"Europe EFTA, nes",R20,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,492,"Europe EU, nes",MCO,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,97,European Union,EUR,True,False,,,,Comtrade aggregate or special code
+comtrade_only,none,238,Falkland Isds (Malvinas),FLK,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,260,Fr. South Antarctic Terr.,ATF,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,838,Free Zones,X2,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,304,Greenland,GRL,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,831,Guernsey,GGY,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,334,Heard Island and McDonald Islands,HMD,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,336,Holy See (Vatican City State),VAT,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,348,Hungary,HUN,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,833,Isle of Man,IMN,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,832,Jersey,JEY,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,412,Kosovo,_KS,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,417,Kyrgyzstan,KGZ,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,473,"LAIA, nes",A79,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,418,Lao People's Dem. Rep.,LAO,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,426,Lesotho,LSO,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,438,Liechtenstein,LIE,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,442,Luxembourg,LUX,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,454,Malawi,MWI,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,466,Mali,MLI,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,488,Midway Islands,_MI,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,496,Mongolia,MNG,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,524,Nepal,NPL,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,536,Neutral Zone,NTZ,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,562,Niger,NER,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,570,Niue,NIU,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,574,Norfolk Isds,NFK,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,637,"North America and Central America, nes",A59,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,807,North Macedonia,MKD,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,290,"Northern Africa, nes",F49,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,527,"Oceania, nes",O19,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,577,"Other Africa, nes",F19,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,568,"Other Europe, nes",E19,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,600,Paraguay,PRY,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,612,Pitcairn,PCN,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,636,"Rest of America, nes",A79,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,646,Rwanda,RWA,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,654,Saint Helena,SHN,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,666,Saint Pierre and Miquelon,SPM,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,674,San Marino,SMR,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,688,Serbia,SRB,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,703,Slovakia,SVK,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,239,South Georgia and the South Sandwich Islands,SGS,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,728,South Sudan,SSD,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,839,Special Categories,XX,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,275,State of Palestine,PSE,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,744,Svalbard and Jan Mayen Islands,SJM,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,757,Switzerland,CHE,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,762,Tajikistan,TJK,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,772,Tokelau,TKL,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,849,US Misc. Pacific Isds,PUS,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,800,Uganda,UGA,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,581,United States Minor Outlying Islands,UMI,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,860,Uzbekistan,UZB,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,872,Wake Island,_WI,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,876,Wallis and Futuna Isds,WLF,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,879,"Western Asia, nes",F97,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,732,Western Sahara,ESH,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,0,World,W00,False,True,,,,Comtrade aggregate or special code
+comtrade_only,none,894,Zambia,ZMB,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,716,Zimbabwe,ZWE,True,True,,,,Not in PortWatch countries (e.g. landlocked)
+comtrade_only,none,248,Åland Islands,ALA,False,True,,,,Not in PortWatch countries (e.g. landlocked)
+alias,none,250,Metropolitan France,FRA,False,True,,,,Duplicate code for FRA; use the reporter-list code
+alias,none,578,"Norway, excluding Svalbard and Jan Mayen",NOR,False,True,,,,Duplicate code for NOR; use the reporter-list code
+alias,none,756,Switzerland,CHE,False,True,,,,Duplicate code for CHE; use the reporter-list code
+alias,none,158,"Taiwan, Province of China",TWN,False,True,,,,Duplicate code for TWN; use the reporter-list code
+alias,none,840,United States of America,USA,False,True,,,,Duplicate code for USA; use the reporter-list code

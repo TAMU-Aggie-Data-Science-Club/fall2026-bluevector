@@ -2,10 +2,11 @@
 
 What it does
     Reads CMO-Historical-Data-Monthly.xlsx (sheet "Monthly Prices"), keeps the four
-    crude oil columns from 2019-01 onward, and saves a clean Parquet table.
+    crude oil columns from 2019-01 onward, and saves clean Parquet and CSV tables.
 
 Output
     data/interim/worldbank_monthly_crude.parquet
+    data/processed/worldbank_monthly_crude.csv
     columns: month (YYYY-MM-DD, first of month), avg_usd_per_bbl, brent_usd_per_bbl,
              dubai_usd_per_bbl, wti_usd_per_bbl   (nominal USD per barrel)
 
@@ -51,8 +52,10 @@ START_DATE = "2019-01-01"
 ROOT = Path(__file__).resolve().parents[1]  # repo root, so it runs from anywhere
 RAW_DIR = ROOT / "data" / "raw" / "worldbank"
 INTERIM_DIR = ROOT / "data" / "interim"
+PROCESSED_DIR = ROOT / "data" / "processed"
 RAW_FILE = RAW_DIR / "CMO-Historical-Data-Monthly.xlsx"
 OUT_FILE = INTERIM_DIR / "worldbank_monthly_crude.parquet"
+OUT_CSV = PROCESSED_DIR / "worldbank_monthly_crude.csv"
 
 # Header text in the sheet -> clean column name
 COLUMNS = {
@@ -171,8 +174,10 @@ def main() -> None:
 
     df = parse(xlsx)
     INTERIM_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     df.to_parquet(OUT_FILE, index=False)
-    print(f"Saved {OUT_FILE}")
+    df.to_csv(OUT_CSV, index=False)
+    print(f"Saved {OUT_FILE} and {OUT_CSV}")
     check(df)
 
 
