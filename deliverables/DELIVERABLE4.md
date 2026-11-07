@@ -1,6 +1,6 @@
 # 🌊 Fourth Deliverable: Baseline Flow Model, Scenario Engine & Validation
 
-**📅 Due: Tuesday, November 17, 2026**
+**📅 Due: Wednesday, November 11, 2026**
 
 ## 🎯 What this is
 
