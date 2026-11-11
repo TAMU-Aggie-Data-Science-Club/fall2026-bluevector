@@ -12,8 +12,8 @@ graph tables these scripts read and write (Deliverable 4 loads `config/nodes.csv
 | `ports/` | `select_ports.py`, `country_codes.py` | Rank ports, build `config/ports_selected.csv`, build the ISO3 crosswalk |
 | `graph/` | `build_nodes.py`, `build_connector_edges.py`, `build_edge_attributes.py`, `graph_validation.py`, `searoute_script.py` | Build and check `config/nodes.csv`, `config/edges_core.csv`, `config/edges.csv` |
 | `od_matrix/` | `od_country_flows.py`, `od_port_shares.py`, `od_crude_share.py`, `od_matrix.py`, `od_checks.py` | Build and check the OD matrix in `data/interim/` |
-| `flow_model/` | *(Deliverable 4)* `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | Route the OD matrix over the graph, compute edge metrics, run scenarios and criticality |
-| `validation/` | *(Deliverable 4)* `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | Observed benchmarks, Red Sea calibration, event validation |
+| `flow_model/` | `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | Route the OD matrix over the graph, compute edge metrics, run scenarios and criticality |
+| `validation/` | `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | Observed benchmarks, Red Sea calibration, event validation |
 
 ## Technology and algorithms
 
