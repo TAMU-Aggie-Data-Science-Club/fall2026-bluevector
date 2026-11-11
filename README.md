@@ -75,6 +75,7 @@ See [`DELIVERABLES.md`](DELIVERABLES.md) for the suggested deliverable breakdown
 |---|---|
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | **Start here.** How the team runs the project on GitHub — PM vs. member roles, the issue → PR → `main` flow, branching, worktrees, reviews. |
 | [`DELIVERABLES.md`](DELIVERABLES.md) | Suggested deliverables and rough timeline. A living plan, not a contract. |
+| [`FLOW_MODEL.md`](FLOW_MODEL.md) | How the crude flow model works: equations, calibration, validation numbers, and current error. |
 | [`DATA.md`](DATA.md) | Suggested data sources, how to access them, and the source register. |
 | [`TEAMS.md`](TEAMS.md) | Subteam structure, source ownership, and the pipeline build plan for Weeks 1–2. |
 | [`FIRST_DELIVERABLE.md`](FIRST_DELIVERABLE.md) | The first deliverable: what is due, who does what, and what data we need from each source. |
