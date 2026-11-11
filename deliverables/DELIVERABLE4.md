@@ -16,8 +16,8 @@ Next deliverable, the **GNN and Economic/Oil Price models** will consume the sce
 
 | Group | Builds | 
 | ----- | ----- | 
-| ⚙️ **Flow & Scenarios** | `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | 
-| 🎯 **Calibration & Validation** | `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | 
+| ⚙️ **Flow & Scenarios** | `scripts/flow_model/`: `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` |
+| 🎯 **Calibration & Validation** | `scripts/validation/`: `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` |
 
 Each group has four parts. **Pick your parts yourselves.** Because both groups agree on a strict **Shared Schema Contract** (defined below) right at the start, every part can be built and tested immediately using mock or baseline tables without waiting on anyone else.
 
@@ -57,7 +57,7 @@ To build the Flow Model and Validation scripts at the exact same time, both grou
 
 ### How the Flow Model & Scenario Engine Work (Step-by-Step)
 
-#### 1. Core Network Routing (`flow_solver.py`)
+#### 1. Core Network Routing (`scripts/flow_model/flow_solver.py`)
 
 * **Weekly demand scale:** Convert `od_matrix.csv` (`barrels_per_year`) into weekly port-to-port demand (`barrels_per_week = barrels_per_year / 52.14`) so units match weekly PortWatch chokepoint capacities.
 
@@ -81,7 +81,7 @@ To build the Flow Model and Validation scripts at the exact same time, both grou
 
 * **Stranded demand:** Add a high-cost "virtual bypass" edge between every origin and destination pair. If an edge with no sea alternative (like Hormuz) is closed, flow routes onto the virtual bypass and is recorded as `stranded_barrels`.
 
-#### 2. Edge-Level Tanker Metrics (`edge_metrics.py`)
+#### 2. Edge-Level Tanker Metrics (`scripts/flow_model/edge_metrics.py`)
 
 Given raw barrel flows on every edge, compute the required dynamic attributes:
 
@@ -111,7 +111,7 @@ Given raw barrel flows on every edge, compute the required dynamic attributes:
   
   ```
 
-#### 3. Scenario Engine & Edge Criticality (`scenario_engine.py`)
+#### 3. Scenario Engine & Edge Criticality (`scripts/flow_model/scenario_engine.py`)
 
 * **Single/Multi-edge throttle control:** Write a clean function `run_scenario(throttles: dict[edge_id, float], scenario_id: str)` that scales `capacity_weekly = base_capacity * throttle_factor` (or adds a risk penalty for conflict zones), re-solves the network, and returns the full `scenario_edge_flows` dataframe plus a summary dictionary (`stranded_barrels`, `total_ton_miles`, `avg_voyage_days`, `suez_tanker_share`).
 
@@ -122,9 +122,9 @@ Given raw barrel flows on every edge, compute the required dynamic attributes:
   
   ```
 
-#### 4. GNN Simulated Dataset Generator (`gnn_sim_generator.py`)
+#### 4. GNN Simulated Dataset Generator (`scripts/flow_model/gnn_sim_generator.py`)
 
-* To train the GNN in Deliverable 5, run `scenario_engine.py` across a grid of simulated disruptions:
+* To train the GNN in Deliverable 5, run `scripts/flow_model/scenario_engine.py` across a grid of simulated disruptions:
 
   * Every single edge throttled at `[0.0, 0.25, 0.50, 0.75]`
 
@@ -136,10 +136,10 @@ Given raw barrel flows on every edge, compute the required dynamic attributes:
 
 | Part | Owner | What to Build | Inputs | Outputs (`data/processed/`) | Independent Test / Acceptance Check | 
 | ----- | ----- | ----- | ----- | ----- | ----- | 
-| **Part 1: Core Flow Solver** | Member 1 | Script `scripts/flow_solver.py`: load `nodes.csv`, `edges.csv`, `od_matrix.csv`, enforce port-endpoint-only rules, route weekly barrels with capacities & BPR delay. | `config/nodes.csv`, `config/edges.csv`, `data/processed/od_matrix.csv` *(or a 10-port toy OD)* | `baseline_raw_flows.parquet` + `solve_network()` function | Total routed + stranded barrels equals total OD matrix barrels (`< 0.1%` error); ports have zero pass-through transit flow; zero negative flows. | 
-| **Part 2: Edge Metrics Calculator** | Member 2 | Script `scripts/edge_metrics.py`: convert raw barrel flows into `tanker_transits`, `utilization`, `delay_days`, `anomaly_z`, `cost_per_barrel`, and deltas vs. baseline. | `baseline_raw_flows.parquet` (or mock flow dataframe), `config/edges.csv` | `baseline_edge_flows.parquet` matching the Shared Schema Contract | All 18 required columns in the Shared Schema Contract are present, properly typed, with `source = "modeled"` and no `NaN` values on active edges. | 
-| **Part 3: Scenario Engine & Criticality** | Member 3 | Script `scripts/scenario_engine.py`: expose `run_scenario()`, test closing each edge, record `stranded_barrels` and rerouted ton-miles, output criticality table. | `flow_solver.py`, `edge_metrics.py` | `edge_criticality.csv` + named scenarios (`red_sea_sim`, `ever_given_sim`, `panama_sim`) | Closing Suez shifts flow to Cape of Good Hope with `0` stranded barrels; closing Hormuz produces high `stranded_barrels`; `edge_criticality.csv` ranks top chokepoints sensibly. | 
-| **Part 4: GNN Scenario Generator** | Member 4 | Script `scripts/gnn_sim_generator.py`: batch-run single-edge (`0.0, 0.25, 0.5, 0.75`) and multi-edge closures and save the combined training table. | `scenario_engine.py` | `gnn_simulated_scenarios.parquet` (tagged `simulated`) | Generates `200+` distinct scenario snapshots; every snapshot has a complete set of edge rows and summary indices ready for PyTorch Geometric. | 
+| **Part 1: Core Flow Solver** | Member 1 | Script `scripts/flow_model/flow_solver.py`: load `nodes.csv`, `edges.csv`, `od_matrix.csv`, enforce port-endpoint-only rules, route weekly barrels with capacities & BPR delay. | `config/nodes.csv`, `config/edges.csv`, `data/interim/od_matrix.csv` *(or a 10-port toy OD)* | `baseline_raw_flows.parquet` + `solve_network()` function | Total routed + stranded barrels equals total OD matrix barrels (`< 0.1%` error); ports have zero pass-through transit flow; zero negative flows. | 
+| **Part 2: Edge Metrics Calculator** | Member 2 | Script `scripts/flow_model/edge_metrics.py`: convert raw barrel flows into `tanker_transits`, `utilization`, `delay_days`, `anomaly_z`, `cost_per_barrel`, and deltas vs. baseline. | `baseline_raw_flows.parquet` (or mock flow dataframe), `config/edges.csv` | `baseline_edge_flows.parquet` matching the Shared Schema Contract | All 18 required columns in the Shared Schema Contract are present, properly typed, with `source = "modeled"` and no `NaN` values on active edges. | 
+| **Part 3: Scenario Engine & Criticality** | Member 3 | Script `scripts/flow_model/scenario_engine.py`: expose `run_scenario()`, test closing each edge, record `stranded_barrels` and rerouted ton-miles, output criticality table. | `scripts/flow_model/flow_solver.py`, `scripts/flow_model/edge_metrics.py` | `edge_criticality.csv` + named scenarios (`red_sea_sim`, `ever_given_sim`, `panama_sim`) | Closing Suez shifts flow to Cape of Good Hope with `0` stranded barrels; closing Hormuz produces high `stranded_barrels`; `edge_criticality.csv` ranks top chokepoints sensibly. | 
+| **Part 4: GNN Scenario Generator** | Member 4 | Script `scripts/flow_model/gnn_sim_generator.py`: batch-run single-edge (`0.0, 0.25, 0.5, 0.75`) and multi-edge closures and save the combined training table. | `scripts/flow_model/scenario_engine.py` | `gnn_simulated_scenarios.parquet` (tagged `simulated`) | Generates `200+` distinct scenario snapshots; every snapshot has a complete set of edge rows and summary indices ready for PyTorch Geometric. | 
 
 ## 🎯 Calibration & Validation group
 
@@ -147,7 +147,7 @@ Given raw barrel flows on every edge, compute the required dynamic attributes:
 
 ### How Calibration & Validation Work (Step-by-Step)
 
-#### 1. Historical Event Ground-Truth (`validation_targets.py`)
+#### 1. Historical Event Ground-Truth (`scripts/validation/validation_targets.py`)
 
 From `portwatch_chokepoints_daily.parquet` and `portwatch_ports_daily_selected.parquet`, aggregate **observed** weekly tanker counts (`n_tanker`), estimated oil volumes, utilization, and seasonal anomalies across three historical disruption windows and their pre-event baselines:
 
@@ -171,7 +171,7 @@ From `portwatch_chokepoints_daily.parquet` and `portwatch_ports_daily_selected.p
 
   * *Disruption window:* Oct 2023 – Mar 2024
 
-#### 2. Parameter Calibration on the Red Sea Crisis (`calibrate_flow.py`)
+#### 2. Parameter Calibration on the Red Sea Crisis (`scripts/validation/calibrate_flow.py`)
 
 * **What we tune:**
 
@@ -190,7 +190,7 @@ From `portwatch_chokepoints_daily.parquet` and `portwatch_ports_daily_selected.p
 
 * Save the winning parameters to `config/flow_params.json` so both groups use them as the project standard.
 
-#### 3. Event Validation & Error Reporting (`validate_events.py`)
+#### 3. Event Validation & Error Reporting (`scripts/validation/validate_events.py`)
 
 * Using time-based splits (calibrate on the first half of the Red Sea window or pre-2024 data; evaluate on held-out weeks, Ever Given, and Panama), compare `modeled` scenario outputs against `observed` PortWatch data:
 
@@ -203,7 +203,7 @@ From `portwatch_chokepoints_daily.parquet` and `portwatch_ports_daily_selected.p
 
 * Save `data/processed/validation_report.csv` so the GNN team in Deliverable 5 has the exact **Flow Model Baseline Error** that the GNN must beat.
 
-#### 4. Vessel Transit Time & Delay Check (`validate_gfw_delays.py`)
+#### 4. Vessel Transit Time & Delay Check (`scripts/validation/validate_gfw_delays.py`)
 
 * Using the Global Fishing Watch tanker port-visit sample (or a distance-over-speed baseline if GFW coverage is thin on a corridor), compute observed voyage days for consecutive visits by the same tanker:
 
@@ -219,10 +219,10 @@ From `portwatch_chokepoints_daily.parquet` and `portwatch_ports_daily_selected.p
 
 | Part | Owner | What to Build | Inputs | Outputs (`data/interim/` & `config/`) | Independent Test / Acceptance Check | 
 | ----- | ----- | ----- | ----- | ----- | ----- | 
-| **Part 1: Historical Ground-Truth Targets** | Member 1 | Script `scripts/validation_targets.py`: build observed pre-event and crisis summary tables for Red Sea (2023–24), Ever Given (2021), and Panama (2023–24). | `data/interim/portwatch_chokepoints_daily.parquet`, `portwatch_ports_daily_selected.parquet` | `validation_targets.csv` (matching Shared Schema columns, tagged `source = "observed"`) | Clearly shows the Dec 2023+ drop in Suez/Bab-el-Mandeb tanker transits and jump in Cape of Good Hope transits; no missing priority chokepoints. | 
-| **Part 2: Red Sea Parameter Calibration** | Member 2 | Script `scripts/calibrate_flow.py`: grid-search `alpha`, `beta`, and Red Sea throttle/penalty to match observed Suez-to-Cape diversion shares. | `validation_targets.csv` + `scenario_engine.py` *(can test early on a mock response function)* | `config/flow_params.json` (`alpha`, `beta`, `speed_knots`, `red_sea_throttle`, `daily_tanker_rate`) | Produces `config/flow_params.json` where predicted Suez share `Suez / (Suez + Cape)` is within `5%` of observed Red Sea crisis levels. | 
-| **Part 3: Event Validation & Benchmark Report** | Member 3 | Script `scripts/validate_events.py`: compute MAE, RMSE, MAPE, and transit shift accuracy across held-out Red Sea weeks, Ever Given, and Panama. | `validation_targets.csv` + `scenario_edge_flows.parquet` *(testable immediately on mock predictions)* | `data/processed/validation_report.csv` + markdown summary table | Outputs a clean scorecard comparing `modeled` vs `observed` at all 7 priority chokepoints, ready to serve as the benchmark the GNN must beat. | 
-| **Part 4: Route Transit Days & Delay Check** | Member 4 | Script `scripts/validate_gfw_delays.py`: compute port-to-port voyage days and delays from GFW tanker visits (plus searoute baseline) pre- and post-Red Sea crisis. | `data/interim/gfw_tanker_visits.parquet` (or PortWatch/searoute), `config/edges.csv` | `data/interim/corridor_delays_validation.csv` | Confirms that Europe-bound voyages rerouting around the Cape of Good Hope add \~10–15 days over the Suez baseline and checks agreement with modeled route days. | 
+| **Part 1: Historical Ground-Truth Targets** | Member 1 | Script `scripts/validation/validation_targets.py`: build observed pre-event and crisis summary tables for Red Sea (2023–24), Ever Given (2021), and Panama (2023–24). | `data/interim/portwatch_chokepoints_daily.parquet`, `portwatch_ports_daily_selected.parquet` | `validation_targets.csv` (matching Shared Schema columns, tagged `source = "observed"`) | Clearly shows the Dec 2023+ drop in Suez/Bab-el-Mandeb tanker transits and jump in Cape of Good Hope transits; no missing priority chokepoints. | 
+| **Part 2: Red Sea Parameter Calibration** | Member 2 | Script `scripts/validation/calibrate_flow.py`: grid-search `alpha`, `beta`, and Red Sea throttle/penalty to match observed Suez-to-Cape diversion shares. | `validation_targets.csv` + `scripts/flow_model/scenario_engine.py` *(can test early on a mock response function)* | `config/flow_params.json` (`alpha`, `beta`, `speed_knots`, `red_sea_throttle`, `daily_tanker_rate`) | Produces `config/flow_params.json` where predicted Suez share `Suez / (Suez + Cape)` is within `5%` of observed Red Sea crisis levels. | 
+| **Part 3: Event Validation & Benchmark Report** | Member 3 | Script `scripts/validation/validate_events.py`: compute MAE, RMSE, MAPE, and transit shift accuracy across held-out Red Sea weeks, Ever Given, and Panama. | `validation_targets.csv` + `scenario_edge_flows.parquet` *(testable immediately on mock predictions)* | `data/processed/validation_report.csv` + markdown summary table | Outputs a clean scorecard comparing `modeled` vs `observed` at all 7 priority chokepoints, ready to serve as the benchmark the GNN must beat. | 
+| **Part 4: Route Transit Days & Delay Check** | Member 4 | Script `scripts/validation/validate_gfw_delays.py`: compute port-to-port voyage days and delays from GFW tanker visits (plus searoute baseline) pre- and post-Red Sea crisis. | `data/interim/gfw_tanker_visits.parquet` (or PortWatch/searoute), `config/edges.csv` | `data/interim/corridor_delays_validation.csv` | Confirms that Europe-bound voyages rerouting around the Cape of Good Hope add \~10–15 days over the Suez baseline and checks agreement with modeled route days. | 
 
 ## 🧱 Base assumptions
 
@@ -259,23 +259,23 @@ Everyone pushes to their group's branch (pull before you push), and **one person
 
 **⚙️ Flow & Scenarios**
 
-* \[ \] `scripts/flow_solver.py` routes `od_matrix.csv` over `nodes.csv` and `edges.csv` with capacity limits and congestion penalties
+* \[ \] `scripts/flow_model/flow_solver.py` routes `od_matrix.csv` over `nodes.csv` and `edges.csv` with capacity limits and congestion penalties
 
-* \[ \] `scripts/edge_metrics.py` outputs all required columns in the Shared Schema Contract (`oil_volume_bbl`, `tanker_transits`, `utilization`, `delay_days`, `anomaly_z`, `share_rerouted`, `cost_per_barrel`)
+* \[ \] `scripts/flow_model/edge_metrics.py` outputs all required columns in the Shared Schema Contract (`oil_volume_bbl`, `tanker_transits`, `utilization`, `delay_days`, `anomaly_z`, `share_rerouted`, `cost_per_barrel`)
 
-* \[ \] `scripts/scenario_engine.py` closes/throttles any edge, reports `stranded_barrels`, and saves `edge_criticality.csv`
+* \[ \] `scripts/flow_model/scenario_engine.py` closes/throttles any edge, reports `stranded_barrels`, and saves `edge_criticality.csv`
 
-* \[ \] `scripts/gnn_sim_generator.py` saves `gnn_simulated_scenarios.parquet` for GNN training
+* \[ \] `scripts/flow_model/gnn_sim_generator.py` saves `gnn_simulated_scenarios.parquet` for GNN training
 
 **🎯 Calibration & Validation**
 
-* \[ \] `scripts/validation_targets.py` builds observed PortWatch benchmark tables for Red Sea (2023–24), Ever Given (2021), and Panama (2023–24)
+* \[ \] `scripts/validation/validation_targets.py` builds observed PortWatch benchmark tables for Red Sea (2023–24), Ever Given (2021), and Panama (2023–24)
 
-* \[ \] `scripts/calibrate_flow.py` saves calibrated parameters to `config/flow_params.json`
+* \[ \] `scripts/validation/calibrate_flow.py` saves calibrated parameters to `config/flow_params.json`
 
-* \[ \] `scripts/validate_events.py` produces `validation_report.csv` (the baseline scorecard the GNN must beat)
+* \[ \] `scripts/validation/validate_events.py` produces `validation_report.csv` (the baseline scorecard the GNN must beat)
 
-* \[ \] `scripts/validate_gfw_delays.py` checks route transit days and Cape rerouting delays
+* \[ \] `scripts/validation/validate_gfw_delays.py` checks route transit days and Cape rerouting delays
 
 **Both**
 

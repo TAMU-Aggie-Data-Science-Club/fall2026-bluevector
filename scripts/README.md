@@ -1,7 +1,8 @@
 # scripts/
 
-All executable code for Blue Vector. `config/` holds only the small CSV reference lists and graph
-tables these scripts read and write (Deliverable 4 loads `config/nodes.csv` and `config/edges.csv`).
+All executable code for Blue Vector. `config/` holds only data: the small CSV reference lists and
+graph tables these scripts read and write (Deliverable 4 loads `config/nodes.csv` and
+`config/edges.csv`), plus the shared parameter file `config/flow_params.json` that Deliverable 4 adds.
 
 ## Layout
 
@@ -11,6 +12,8 @@ tables these scripts read and write (Deliverable 4 loads `config/nodes.csv` and 
 | `ports/` | `select_ports.py`, `country_codes.py` | Rank ports, build `config/ports_selected.csv`, build the ISO3 crosswalk |
 | `graph/` | `build_nodes.py`, `build_connector_edges.py`, `build_edge_attributes.py`, `graph_validation.py`, `searoute_script.py` | Build and check `config/nodes.csv`, `config/edges_core.csv`, `config/edges.csv` |
 | `od_matrix/` | `od_country_flows.py`, `od_port_shares.py`, `od_crude_share.py`, `od_matrix.py`, `od_checks.py` | Build and check the OD matrix in `data/interim/` |
+| `flow_model/` | *(Deliverable 4)* `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | Route the OD matrix over the graph, compute edge metrics, run scenarios and criticality |
+| `validation/` | *(Deliverable 4)* `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | Observed benchmarks, Red Sea calibration, event validation |
 
 ## Run order
 
@@ -49,7 +52,7 @@ writes `config/edges.csv`.
 
 ## Note on deliverable docs
 
-The deliverable write-ups name scripts flat (`scripts/od_country_flows.py`,
-`scripts/flow_solver.py`). Grouped paths are the same files:
-`od_*` lives in `scripts/od_matrix/`, graph builders in `scripts/graph/`, data pulls in
-`scripts/data_pull/`, port selection in `scripts/ports/`.
+`DELIVERABLE4.md` uses the grouped paths. `DELIVERABLE3.md` still names its scripts flat
+(`scripts/od_country_flows.py`, `scripts/od_port_shares.py`); those files live in `scripts/od_matrix/`.
+Graph builders are in `scripts/graph/`, data pulls in `scripts/data_pull/`, port selection in
+`scripts/ports/`.
