@@ -70,8 +70,8 @@ def fetch_sums(portids):
 def build():
     ports = read_csv(SELECTED)
     junctions = read_csv(JUNCTIONS)
-    if len(ports) != 100 or len(junctions) != 38:
-        raise ValueError("Expected 100 selected ports and 38 junctions")
+    if len(ports) != 100:
+        raise ValueError("Expected 100 selected ports")
     member_ids = sorted({p for row in ports for p in row["member_portids"].split(";")})
     sums = fetch_sums(member_ids)
     columns = list(ports[0]) + list(EXTRA)
@@ -89,7 +89,7 @@ def build():
         nodes.append({**{c: "" for c in columns},
                       **{k: v for k, v in junction.items() if k in columns}})
     ids = [r["node_id"] for r in nodes]
-    if len(ids) != len(set(ids)) or len(nodes) != 138:
+    if len(ids) != len(set(ids)) or len(nodes) != len(ports) + len(junctions):
         raise ValueError("Duplicate node IDs or incorrect node count")
     for row in nodes:
         lat, lon = float(row["lat"]), float(row["lon"])

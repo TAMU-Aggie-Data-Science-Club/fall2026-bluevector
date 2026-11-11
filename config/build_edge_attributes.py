@@ -1,8 +1,10 @@
 """Deliverable 3 — Graph Group, Part 3: Static & Dynamic Edge Attributes.
 
 What it does
-    1. Reads config/edges.csv (or a passed --edges path such as edges_2.csv).
-    2. Computes min_transit_days from length_nm at SPEED_KNOTS (default 13 knots).
+    1. Reads config/edges_core.csv (or a passed --edges path) and writes the attributes
+       back to that same file, so Part 2 (build_connector_edges.py) can read one table.
+    2. Computes min_transit_days from length_nm at the top of the documented 12-14 kn
+       speed range (default 14 knots: minimum days = fastest documented speed).
     3. Matches chokepoint edges to PortWatch's chokepoints database to fill
        chokepoint_portid.
     4. Adds static domain attributes to edges.csv:
@@ -23,8 +25,13 @@ What it does
     6. Attaches summary dynamic columns (baseline median & latest week) to config/edges.csv.
 
 How to run (from the repo root)
-    python scripts/build_edge_attributes.py
-    python scripts/build_edge_attributes.py --edges config/edges.csv --speed 13.0
+    python config/build_edge_attributes.py
+    python config/build_edge_attributes.py --edges config/edges_core.csv --speed 14.0
+
+Pipeline order
+    1. build_edge_attributes.py    -> config/edges_core.csv  (static + dynamic columns)
+    2. build_connector_edges.py    -> config/edges.csv        (connectors, lengths, transit days)
+    3. graph_validation.py         -> config/validation_results.csv
 
 Needs
     pip install pandas numpy pyarrow requests
@@ -45,9 +52,7 @@ INTERIM_DIR = ROOT / "data" / "interim"
 PROCESSED_DIR = ROOT / "data" / "processed"
 
 DEFAULT_EDGES_CANDIDATES = [
-    CONFIG_DIR / "edges.csv",
-    ROOT / "edges_2.csv",
-    ROOT / "edges.csv",
+    CONFIG_DIR / "edges_core.csv",
 ]
 
 STATIC_CP_URL = (
@@ -60,7 +65,9 @@ DAILY_CP_URL = (
 )
 
 # Baseline assumptions from DELIVERABLE3.md & DATA.md
-DEFAULT_SPEED_KNOTS = 13.0
+# Minimum transit days use the top of the documented 12-14 kn range: the fastest
+# documented speed gives the minimum time for a given distance.
+DEFAULT_SPEED_KNOTS = 14.0
 BARRELS_PER_TONNE = 7.3
 BASELINE_START = "2019-01-01"
 BASELINE_END = "2023-10-31"       # Pre-Red Sea crisis cutoff for capacity_proxy
@@ -430,20 +437,20 @@ def resolve_edges_path(arg_path: Path | None) -> Path:
     for candidate in DEFAULT_EDGES_CANDIDATES:
         if candidate.exists():
             return candidate
-    raise FileNotFoundError(f"Could not find edges.csv in any of: {DEFAULT_EDGES_CANDIDATES}")
+    raise FileNotFoundError(f"Could not find edges_core.csv in any of: {DEFAULT_EDGES_CANDIDATES}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--edges", type=Path, default=None, help="Path to input edges.csv (or edges_2.csv)")
-    ap.add_argument("--out", type=Path, default=None, help="Output path for updated edges.csv")
-    ap.add_argument("--speed", type=float, default=DEFAULT_SPEED_KNOTS, help="Assumed tanker speed in knots (default 13.0)")
+    ap.add_argument("--edges", type=Path, default=None, help="Path to input edges_core.csv")
+    ap.add_argument("--out", type=Path, default=None, help="Output path (default: the input edges_core.csv)")
+    ap.add_argument("--speed", type=float, default=DEFAULT_SPEED_KNOTS, help="Speed in knots for minimum transit days (default 14.0, the top of the 12-14 kn range)")
     args = ap.parse_args()
 
     edges_path = resolve_edges_path(args.edges)
-    out_edges_path = args.out or (CONFIG_DIR / "edges.csv" if CONFIG_DIR.exists() else edges_path)
+    out_edges_path = args.out or edges_path
 
     print(f"Loading edges from: {edges_path}")
     edges = pd.read_csv(edges_path)

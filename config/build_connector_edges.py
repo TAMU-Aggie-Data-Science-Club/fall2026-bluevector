@@ -3,9 +3,10 @@
 Attach ports to junctions with connector edges, then fill lengths.
 
 Inputs  (same folder as this script, or pass --dir):
-    junctions.csv, ports_selected.csv, edges.csv   (edges.csv = junction-to-junction edges)
+    junctions.csv, ports_selected.csv, edges_core.csv   (edges_core.csv = junction-to-junction edges)
 Outputs:
-    edges_full.csv         edges.csv + connector edges, lengths and transit days filled
+    edges.csv              edges_core.csv + connector edges, lengths and transit days filled
+                           (this is the Deliverable 3 edge hand-in: the whole graph)
 
 Rules (from the spec):
   1. Each port gets up to MAX_CONNECTORS connectors to its nearest junctions.
@@ -13,9 +14,9 @@ Rules (from the spec):
          Ports that sit on a chokepoint (e.g. Algeciras) are attached by hand: MANUAL_ATTACH.
        * Skip a connector that is not at least MIN_SAVING (~5%) shorter than reaching that
          junction through a connector already kept (port -> kept junction -> junction network).
-       * Ports are start/end points only, never stop-overs. Connectors are tagged
-         edge_type='connector' and ports are listed in `terminal_nodes` so the routing step can
-         refuse to route *through* them.
+       * Ports are start/end points only, never stop-overs. A port node is
+         node_type='port' in nodes.csv, so the routing step can refuse to route
+         *through* it; connectors themselves are tagged edge_type='connector'.
   2. length_nm comes from searoute for every edge, with speed_knot passed explicitly,
      and min_transit_days is added.
 """
@@ -110,7 +111,7 @@ def main():
     3. For each port, pick up to MAX_CONNECTORS junctions: hand-attached ports come from
        MANUAL_ATTACH
     4. Add speed_knot, min_transit_days and typical_transit_days to every edge.
-    5. Write edges_full.csv .
+    5. Write edges.csv .
     """
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default=str(Path(__file__).parent), help="folder with the input CSVs")
@@ -120,7 +121,7 @@ def main():
 
     junctions = pd.read_csv(d / "junctions.csv")
     ports = pd.read_csv(d / "ports_selected.csv")
-    edges = pd.read_csv(d / "edges.csv")
+    edges = pd.read_csv(d / "edges_core.csv")
     jpos = junctions.set_index("node_id")[["lat", "lon"]].to_dict("index")
 
     #  recompute lengths with searoute
@@ -153,6 +154,9 @@ def main():
             traversed_passages=";".join(passages) if passages else None,
             from_snap_nm=round(p_snap, 1), to_snap_nm=round(j_snap, 1),
             connector_kind=kind,
+            # connectors carry no dynamic attributes until the flow model routes over
+            # them; tag them 'modeled' so every row has an observed/modeled label
+            source="modeled",
         ))
         next_id += 1
 
@@ -203,14 +207,15 @@ def main():
 
 
     full = pd.concat([edges, pd.DataFrame(new_rows)], ignore_index=True)
-    full["connector_kind"] = full.get("connector_kind")
+    if "connector_kind" not in full.columns:
+        full["connector_kind"] = None
 
     # Compute speed and minimum transit days for every edge
     full["speed_knot"] = SPEED_KNOT
     full["min_transit_days"] = (full["length_nm"] / (MAX_SPEED_KNOT * 24)).round(2)   # at top speed
     full["typical_transit_days"] = (full["length_nm"] / (SPEED_KNOT * 24)).round(2)
 
-    full.to_csv(out / "edges_full.csv", index=False)
+    full.to_csv(out / "edges.csv", index=False)
 
     # ---- quick sanity checks
     conn = full[full.edge_type == "connector"]
