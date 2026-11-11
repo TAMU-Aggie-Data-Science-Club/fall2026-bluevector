@@ -2,6 +2,8 @@
 
 **📅 Due: Wednesday, November 11, 2026**
 
+> **How the model works and how far off it is:** see [`FLOW_MODEL.md`](../FLOW_MODEL.md) for the equations, the calibration, the validation numbers, and the known limits.
+
 ## 🎯 What this is
 
 Deliverable 3 gave us the assembled network (`nodes.csv`, `edges.csv` with static/dynamic attributes) and the port-to-port demand (`od_matrix.csv`). Now we build the physics engine of the project and validate it against real-world disruptions:
