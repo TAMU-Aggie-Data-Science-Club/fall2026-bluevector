@@ -68,10 +68,18 @@ priced against sailing time is nearly free, and routes then never avoid a busy c
 (estimated oil volume divided by weekly tanker transits, clipped to 250k–2.2M barrels), and one
 million barrels otherwise.
 
-**Step 3 — load demand in ten passes.** A single shortest-path assignment would drop every barrel
-on one route and ignore congestion entirely. Instead each pass routes one tenth of each
-origin-destination pair along current cheapest paths, then recomputes costs from the flows so far.
-Ten passes is enough for routes to settle without spending minutes per scenario.
+**Step 3 — load demand in ten passes.** Cheapest paths come from Dijkstra's algorithm, one
+single-source run per origin port that returns the best path to every destination at once (NetworkX
+`single_source_dijkstra`). Every arc weight is a cost in dollars per barrel, so it is non-negative,
+which is Dijkstra's only precondition. A single shortest-path assignment would drop every barrel on
+one route and ignore congestion entirely, so each pass routes one tenth of each origin-destination
+pair, then recomputes costs from the flows so far: the standard incremental-loading,
+Frank-Wolfe-style approximation of user equilibrium. Ten passes is enough for routes to settle
+without spending minutes per scenario.
+
+Capacity is not enforced inside the optimization; there is no min-cost-flow solve. It enters through
+this loading procedure and through arc removal in step 4, so the result is an approximate
+equilibrium, not the exact optimum of a capacitated flow problem.
 
 **Step 4 — saturate throttled edges.** An edge that has been throttled and is already at 98 % of its
 available throughput is removed from the graph for the remaining passes. The extra cargo then has to

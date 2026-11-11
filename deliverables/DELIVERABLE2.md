@@ -24,6 +24,8 @@ Split the work inside your group however you like.
 
 **Hand in:** a list of nodes, a list of edges, and pipeline scripts.
 
+> **Tools:** Python with pandas and pyarrow for the tables, searoute for sea distances, NetworkX for connectivity and alternative-route checks, plus the source APIs (PortWatch, NGA World Port Index, Comtrade, EIA, World Bank).
+
 1. **Choose about 100 ports.** Rank PortWatch ports by volume, using the **Port selection** formula in `DATA.md`. Report what share of global and tanker volume they cover, and check that no obvious major oil ports are missing.
 2. **Match ports to the port index** (NGA World Port Index) and report the match rate.
 3. **Choose 15–20 junctions:** sea crossing points such as the Red Sea, Cape of Good Hope, Hormuz, Malacca, Gibraltar, and the ends of the Panama Canal.

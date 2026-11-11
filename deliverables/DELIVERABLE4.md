@@ -74,7 +74,7 @@ To build the Flow Model and Validation scripts at the exact same time, both grou
   
   ```
 
-* **Congestion & Capacity Iteration:** Use iterative capacity-constrained routing (e.g., Frank-Wolfe / incremental loading or NetworkX `min_cost_flow` with piecewise congestion steps). Update edge travel times after each step using the standard BPR congestion curve:
+* **Congestion & Capacity Iteration:** Use iterative capacity-constrained routing: the implementation finds cheapest paths with NetworkX `single_source_dijkstra` (one run per origin port, weights in $/bbl) and loads demand in ten incremental passes, so capacity binds through the loading procedure rather than a min-cost-flow solve. Update edge travel times after each step using the standard BPR congestion curve:
 
   ```
   delay_days = free_flow_days * alpha * ((tanker_transits / capacity_weekly) ^ beta)
@@ -131,6 +131,8 @@ Given raw barrel flows on every edge, compute the required dynamic attributes:
   * Every single edge throttled at `[0.0, 0.25, 0.50, 0.75]`
 
   * Key multi-edge combinations (e.g., `Suez + Bab-el-Mandeb` throttled together; `Malacca` partial throttle; `Hormuz` partial throttle)
+
+* The batch runs through a `multiprocessing` process pool (`--workers`); the full grid finishes in about four minutes on eight workers.
 
 * Tag all rows `source = "simulated"` and save to `data/processed/gnn_simulated_scenarios.parquet`.
 

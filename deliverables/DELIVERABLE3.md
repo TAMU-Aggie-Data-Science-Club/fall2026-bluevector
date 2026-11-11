@@ -11,6 +11,8 @@ Deliverable 2 gave us the map (38 junctions, 54 edges), the ranked ports, and th
 
 Next deliverable, the **flow model**, routes the OD matrix over the graph. We are **not** building the flow model yet.
 
+> **Tools:** searoute for sea distances, GeoPandas/Shapely for geometry, NetworkX for connectivity checks, pandas/pyarrow for tables, and NumPy for the IPF/RAS fitting.
+
 ## 👥 Two groups
 
 | Group | Builds | 

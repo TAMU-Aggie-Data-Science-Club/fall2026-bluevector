@@ -21,6 +21,8 @@ Ship an interactive dashboard where a user can pick any edge in the global shipp
 
 > NetworkX, `searoute`, statsmodels, scikit-learn, and pyarrow are additions to the original suggested stack. Confirm each before adopting (see [`AGENTS.md`](AGENTS.md) §7).
 
+**Algorithms in use.** Dijkstra shortest paths over a directed graph with costs in dollars per barrel, loaded in ten incremental passes (Frank-Wolfe-style) with BPR congestion penalties and arc saturation. The OD matrix comes from iterative proportional fitting (IPF/RAS) against PortWatch port totals, and capacity proxies are high percentiles of historical tanker transits rather than physical limits. Calibration is a grid search fitted on the Red Sea H1 window and scored on held-out H2, reported with MAE, RMSE, MAPE and direction match. The GNN is trained on simulated scenarios from the flow model and benchmarked against Prophet and LSTM. Details in [`FLOW_MODEL.md`](FLOW_MODEL.md).
+
 See [`DATA.md`](DATA.md) for concrete data sources and how to access them.
 
 ## What team members will gain

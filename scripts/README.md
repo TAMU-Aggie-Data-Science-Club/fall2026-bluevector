@@ -15,6 +15,15 @@ graph tables these scripts read and write (Deliverable 4 loads `config/nodes.csv
 | `flow_model/` | *(Deliverable 4)* `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | Route the OD matrix over the graph, compute edge metrics, run scenarios and criticality |
 | `validation/` | *(Deliverable 4)* `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | Observed benchmarks, Red Sea calibration, event validation |
 
+## Technology and algorithms
+
+- **Tables:** Python 3, pandas, NumPy, pyarrow (Parquet).
+- **Graph:** NetworkX. The flow model uses single-source Dijkstra (one run per origin port, weights in dollars per barrel) inside a ten-pass incremental loading loop with BPR congestion and arc saturation. The graph builders use all-pairs Dijkstra to decide port connectors, and shortest paths for connectivity and alternative-route checks.
+- **Distances and geometry:** searoute, GeoPandas, Shapely.
+- **Fitting and scoring:** iterative proportional fitting (IPF/RAS) for the OD matrix, percentile capacity proxies, grid-search calibration with an H1/H2 time split, and MAE, RMSE, MAPE and direction match for validation.
+- **Batch runs:** a `multiprocessing` process pool for the 337-scenario GNN set (`--workers`).
+- **Planned for Deliverable 5 and later:** PyTorch Geometric (GNN), statsmodels/scikit-learn (price model), Prophet/LSTM benchmarks, Streamlit and Kepler.gl (dashboard).
+
 ## Run order
 
 ```sh
