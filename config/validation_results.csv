@@ -1,0 +1,34 @@
+check,status,detail
+junction node_id unique,PASS,
+edge_id unique,PASS,
+edge endpoints exist in node table,PASS,[]
+no self-loops,PASS,
+no duplicate node pairs,PASS,[]
+length_nm positive and non-null,PASS,
+edge coordinates match node table,PASS,[]
+snap distances <= 100 nm,WARN,"['E004', 'E007', 'E014', 'E017', 'E024', 'E028', 'E029', 'E030']"
+junction graph is connected,PASS,
+chokepoint edges: searoute_passage == traversed_passages,PASS,[]
+non-chokepoint edges cross no passage,PASS,[]
+"'none' labels match expected (Hormuz, Bosporus)",PASS,"labelled none: ['bosporus', 'gibraltar', 'ormuz']; expected: ['bosporus', 'gibraltar', 'ormuz']"
+babalmandab: alternative exists,PASS,detour 12517 nm vs 270 nm direct
+bosporus: alternative absent (expected),PASS,
+chili: alternative exists,PASS,detour 10179 nm vs 574 nm direct
+"gibraltar: alternative absent (expected, detour impractical)",PASS,detour 12500 nm vs 286 nm direct
+malacca: alternative exists,PASS,detour 1917 nm vs 698 nm direct
+ormuz: alternative absent (expected),PASS,
+panama: alternative exists,PASS,detour 10599 nm vs 154 nm direct
+south_africa: alternative exists,PASS,detour 9769 nm vs 609 nm direct
+suez: alternative exists,PASS,detour 12468 nm vs 319 nm direct
+sunda: alternative exists,PASS,detour 2286 nm vs 330 nm direct
+group asia_europe: >= 2 passages,PASS,"passages: ['babalmandab', 'south_africa', 'suez']"
+group atlantic_pacific: >= 2 passages,PASS,"passages: ['chili', 'panama']"
+group indian_pacific: >= 2 passages,PASS,"passages: ['malacca', 'sunda']"
+edge length within 5% of searoute (79 edges),PASS,"(edge, ours, searoute): []"
+junction-to-junction paths within 1.15x of searoute (21 pairs),PASS,outliers: []
+all junctions are in water,PASS,[]
+full graph: edge_id unique,PASS,279 edges
+full graph: every port has >= 1 connector,PASS,100 ports; missing: []
+full graph: at most 3 connectors per port,PASS,"max 3 per port, avg 2.0"
+full graph: no automatic connector crosses a chokepoint,PASS,[]
+full graph: whole network is connected,PASS,"142 nodes, 279 edges"

@@ -9,6 +9,7 @@ data/*
 # --- Agent / private working notes ----------------------------------------
 # Scratch planning files (see AGENTS.md) — never part of a PR.
 .planning/
+.freebuff/
 
 # --- Common noise ----------------------------------------------------------
 # OS / editor cruft
