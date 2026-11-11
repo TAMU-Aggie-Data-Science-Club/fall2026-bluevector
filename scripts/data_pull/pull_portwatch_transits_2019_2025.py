@@ -38,7 +38,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 RAW_DIR = REPO / "data/raw"
 RAW = RAW_DIR / "portwatch_ports_daily_2019_2025"   # page cache
 INTERIM = REPO / "data/interim"

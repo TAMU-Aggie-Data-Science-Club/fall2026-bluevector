@@ -47,7 +47,7 @@ SERIES = "RBRTE"          # Europe Brent Spot Price FOB, USD per barrel
 START = "2019-01-01"
 PAGE = 5000
 
-ROOT = Path(__file__).resolve().parents[1]  # repo root, so it runs from anywhere
+ROOT = Path(__file__).resolve().parents[2]  # repo root, so it runs from anywhere
 RAW_FILE = ROOT / "data" / "raw" / "eia" / "brent_daily.json"
 INTERIM = ROOT / "data" / "interim"
 DAILY_OUT = INTERIM / "eia_brent_daily.parquet"

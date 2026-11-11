@@ -1,8 +1,8 @@
 """Create baseline country-to-country crude oil flows for the maritime network.
 
 Run from the repository root:
-    python config/comtrade_script.py
-    python config/od_country_flows.py
+    python scripts/data_pull/comtrade_script.py
+    python scripts/od_matrix/od_country_flows.py
 
 Inputs:
     data/interim/comtrade_all_annual.parquet
@@ -31,7 +31,7 @@ import pandas as pd
 
 
 DATA_DIR = Path("data")
-CONFIG_DIR = Path("config")
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 INTERIM_DIR = DATA_DIR / "interim"
 BASELINE_YEARS = range(2019, 2023)
 

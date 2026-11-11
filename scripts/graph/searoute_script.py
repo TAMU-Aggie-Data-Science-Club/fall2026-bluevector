@@ -1,15 +1,15 @@
 """Add endpoint coordinates and sea distance (nautical miles) to the edge list using searoute.
 
-Run:  python config/searoute_script.py
+Run:  python scripts/graph/searoute_script.py
 Needs: pip install searoute pandas
 
-Inputs, looked up next to this script first, then in the current folder:
+Inputs, looked up in config/ first, then in the current folder:
   edges_core.csv (or edges.csv)  one row per edge: edge_id, from_node, to_node, edge_type, ...
   junctions.csv                   node_id, lat, lon      (the 15-20 junctions)
   ports_selected.csv             node_id, lat, lon      (from select_ports.py; node_id is port_<portid>)
   nodes.csv                      node_id, lat, lon      (optional: any other nodes)
 
-Output (next to the edges input): edges.csv with these columns added or replaced
+Output (into the same folder as the edges input): edges.csv with these columns added or replaced
   from_lat, from_lon, to_lat, to_lon   coordinates of each edge's two ends
   length_nm                            searoute distance in nautical miles
   traversed_passages                   passages searoute's route goes through (semicolon-separated)
@@ -30,7 +30,7 @@ import math
 import pandas as pd
 import searoute as sr
 
-HERE = Path(__file__).resolve().parent
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
 NODE_FILES = ["junctions.csv", "ports_selected.csv", "nodes.csv"]
 EDGES_INPUTS = ["edges_core.csv", "edges.csv"]
 EDGES_OUTPUT_NAME = "edges.csv"
@@ -40,8 +40,8 @@ UNITS = "naut"  # searoute's nautical-mile unit ("nmi" is NOT valid and raises K
 
 
 def find(name):
-    """Look for a file next to this script, then in the current folder."""
-    for base in (HERE, Path.cwd()):
+    """Look for a file in config/, then in the current folder."""
+    for base in (CONFIG_DIR, Path.cwd()):
         if (base / name).exists():
             return base / name
     return None

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 PORTS_PATH = REPO / "config" / "ports_selected.csv"
 DAILY_PATH = REPO / "data" / "interim" / "portwatch_ports_daily_selected.parquet"
 OUTPUT_DIR = REPO / "data" / "interim"
@@ -24,7 +24,7 @@ def read_inputs():
     if not DAILY_PATH.exists():
         raise FileNotFoundError(
             f"Daily PortWatch file not found: {DAILY_PATH}\n"
-            "Create it with: python config/pull_portwatch_transits_2019_2025.py "
+            "Create it with: python scripts/data_pull/pull_portwatch_transits_2019_2025.py "
             "--ports config/ports_selected.csv"
         )
 

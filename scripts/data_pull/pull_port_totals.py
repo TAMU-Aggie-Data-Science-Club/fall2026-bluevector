@@ -24,7 +24,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 RAW = REPO / "data/raw"; INTERIM = REPO / "data/interim"
 URL = ("https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/"
        "Daily_Ports_Data/FeatureServer/0/query")

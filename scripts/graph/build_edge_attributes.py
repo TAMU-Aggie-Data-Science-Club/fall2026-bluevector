@@ -25,8 +25,8 @@ What it does
     6. Attaches summary dynamic columns (baseline median & latest week) to config/edges.csv.
 
 How to run (from the repo root)
-    python config/build_edge_attributes.py
-    python config/build_edge_attributes.py --edges config/edges_core.csv --speed 14.0
+    python scripts/graph/build_edge_attributes.py
+    python scripts/graph/build_edge_attributes.py --edges config/edges_core.csv --speed 14.0
 
 Pipeline order
     1. build_edge_attributes.py    -> config/edges_core.csv  (static + dynamic columns)
@@ -45,7 +45,7 @@ import numpy as np
 import pandas as pd
 import requests
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = ROOT / "config"
 RAW_DIR = ROOT / "data" / "raw"
 INTERIM_DIR = ROOT / "data" / "interim"

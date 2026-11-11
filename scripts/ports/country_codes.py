@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RAW = ROOT / "data" / "raw"
 INTERIM = ROOT / "data" / "interim"
 PROCESSED = ROOT / "data" / "processed"

@@ -1,8 +1,8 @@
 """
-Run (from anywhere):  python config/graph_validation.py
+Run (from anywhere):  python scripts/graph/graph_validation.py
 Needs: pip install searoute pandas networkx global-land-mask
 
-Inputs (always resolved next to this script, so the working directory does not matter):
+Inputs (always resolved from config/, so the working directory does not matter):
   junctions.csv        node_id, node_type, name, lat, lon, country_iso3, portwatch_portid
   edges_core.csv       junction-to-junction edges: edge_id, from_node, from_lat, from_lon, to_node,
                        to_lat, to_lon, edge_type, chokepoint_portid, alternative_group,
@@ -10,7 +10,7 @@ Inputs (always resolved next to this script, so the working directory does not m
   edges.csv            optional; the hand-in edge table (edges_core.csv plus port connectors)
   ports_selected.csv   optional; the 100 port nodes (check 7a)
 
-Output (written next to the script):
+Output (written to config/):
   validation_results.csv   one row per check: check, status (PASS / WARN / FAIL), detail
 
 Checks:
@@ -109,11 +109,11 @@ import networkx as nx
 import searoute as sr                 # pip install searoute
 from global_land_mask import globe    # pip install global-land-mask
 
-HERE = Path(__file__).resolve().parent
-JUNCTIONS_CSV = HERE / "junctions.csv"
-EDGES_CSV = HERE / "edges_core.csv"
-EDGES_FULL_CSV = HERE / "edges.csv"          # full graph: core edges + port connectors
-PORTS_CSV = HERE / "ports_selected.csv"
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"   # reference lists + graph tables
+JUNCTIONS_CSV = CONFIG_DIR / "junctions.csv"
+EDGES_CSV = CONFIG_DIR / "edges_core.csv"
+EDGES_FULL_CSV = CONFIG_DIR / "edges.csv"         # full graph: core edges + port connectors
+PORTS_CSV = CONFIG_DIR / "ports_selected.csv"
 
 EXPECTED_NONE = {
     "ormuz",
@@ -296,4 +296,4 @@ if EDGES_FULL_CSV.exists():
 
 report = pd.DataFrame(results, columns=["check", "status", "detail"])
 print(report.to_string(index=False, max_colwidth=90))
-report.to_csv(HERE / "validation_results.csv", index=False)
+report.to_csv(CONFIG_DIR / "validation_results.csv", index=False)

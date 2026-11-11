@@ -15,13 +15,13 @@ What it does
     `global_default` row. That default is a decision the group should confirm (see below).
 
 Run from the repository root
-    python config/od_crude_share.py                 # default = global ratio if available
-    python config/od_crude_share.py --default 0.65  # set the global_default by hand
+    python scripts/od_matrix/od_crude_share.py                 # default = global ratio if available
+    python scripts/od_matrix/od_crude_share.py --default 0.65  # set the global_default by hand
 
 Inputs (data/interim/)
-    eia_chokepoint_flows.parquet            from config/eia_chokepoints.py
-    portwatch_chokepoints_daily.parquet     from config/pull_chokepoints.py (or the .csv it falls back to)
-    country_flows.csv                       from config/od_country_flows.py   (optional)
+    eia_chokepoint_flows.parquet            from scripts/data_pull/eia_chokepoints.py
+    portwatch_chokepoints_daily.parquet     from scripts/data_pull/pull_chokepoints.py (or the .csv it falls back to)
+    country_flows.csv                       from scripts/od_matrix/od_country_flows.py   (optional)
     port_totals.csv                         Part 2; long format (portid, direction, tons_per_year)
                                             or wide format (export_tanker_tons_yr, import_tanker_tons_yr)  (optional)
 
@@ -37,7 +37,7 @@ Things to know before trusting the numbers
     * PortWatch capacity_tanker is carrying capacity of transiting tankers, laden or not, in both
       directions. EIA is oil actually carried. Ratios therefore come out lower than the true laden share.
     * EIA's Suez figure includes the SUMED pipeline, which is not ship traffic.
-    * EIA table values are hardcoded in config/eia_chokepoints.py (2019 from the June 2024
+    * EIA table values are hardcoded in scripts/data_pull/eia_chokepoints.py (2019 from the June 2024
       edition, 2020 onward from a later one). Mixed editions are not exactly comparable.
 """
 
@@ -47,7 +47,7 @@ from pathlib import Path
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 INTERIM = ROOT / "data" / "interim"
 
 BARRELS_PER_TONNE = 7.3                 # DELIVERABLE3 base assumption

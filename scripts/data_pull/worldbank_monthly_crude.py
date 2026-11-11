@@ -49,7 +49,7 @@ WB_XLSX_URL = (
 SHEET_NAME = "Monthly Prices"
 START_DATE = "2019-01-01"
 
-ROOT = Path(__file__).resolve().parents[1]  # repo root, so it runs from anywhere
+ROOT = Path(__file__).resolve().parents[2]  # repo root, so it runs from anywhere
 RAW_DIR = ROOT / "data" / "raw" / "worldbank"
 INTERIM_DIR = ROOT / "data" / "interim"
 PROCESSED_DIR = ROOT / "data" / "processed"

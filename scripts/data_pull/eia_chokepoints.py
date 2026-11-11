@@ -31,7 +31,7 @@ EIA_CHOKEPOINTS_URL = (
     "World_Oil_Transit_Chokepoints/"
 )
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RAW_FILE = ROOT / "data" / "raw" / "eia" / "chokepoint_flows_raw.json"
 INTERIM = ROOT / "data" / "interim"
 OUT_FILE = INTERIM / "eia_chokepoint_flows.parquet"

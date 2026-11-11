@@ -1,6 +1,6 @@
 """Build BlueVector Deliverable 3 Graph Part 1 nodes.csv.
 
-Run from the repository root: python config/build_nodes.py
+Run from the repository root: python scripts/graph/build_nodes.py
 Uses only Python's standard library and the existing PortWatch ArcGIS source.
 Inputs: config/ports_selected.csv, config/junctions.csv
 Output: config/nodes.csv
@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SELECTED = ROOT / "config/ports_selected.csv"
 JUNCTIONS = ROOT / "config/junctions.csv"
 OUTPUT = ROOT / "config/nodes.csv"

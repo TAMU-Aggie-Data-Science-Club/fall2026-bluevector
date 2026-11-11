@@ -1,10 +1,10 @@
 """Fit the port-to-port crude oil OD matrix with iterative proportional fitting (IPF).
 
 Run from the repository root:
-    python config/od_matrix.py            # real inputs from data/interim/
-    python config/od_matrix.py --sample   # made-up inputs, to test the method
+    python scripts/od_matrix/od_matrix.py            # real inputs from data/interim/
+    python scripts/od_matrix/od_matrix.py --sample   # made-up inputs, to test the method
 Then check the result:
-    python config/od_checks.py            # or: python config/od_checks.py --sample
+    python scripts/od_matrix/od_checks.py            # or: python scripts/od_matrix/od_checks.py --sample
 
 Inputs (data/interim/):
     country_flows.csv   exporter_iso3, importer_iso3, barrels_per_year   (Part 1)
@@ -57,7 +57,7 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 INTERIM = ROOT / "data" / "interim"
 SAMPLE_DIR = INTERIM / "sample"
 
@@ -77,7 +77,7 @@ def load_crude_share():
     path = INTERIM / "crude_share.csv"
     if not path.exists():
         print(f"WARNING: {path} not found; using fallback CRUDE_SHARE = {CRUDE_SHARE_FALLBACK}. "
-              "Run config/od_crude_share.py first to calibrate.")
+              "Run scripts/od_matrix/od_crude_share.py first to calibrate.")
         return CRUDE_SHARE_FALLBACK
     df = pd.read_csv(path)
     row = df[df["scope"] == "global_default"]

@@ -1,8 +1,8 @@
 """Sanity checks for the OD matrix built by od_matrix.py.
 
 Run from the repository root, after od_matrix.py:
-    python config/od_checks.py            # checks data/interim/
-    python config/od_checks.py --sample   # checks data/interim/sample/
+    python scripts/od_matrix/od_checks.py            # checks data/interim/
+    python scripts/od_matrix/od_checks.py --sample   # checks data/interim/sample/
 
 Inputs (same folder):
     od_matrix.csv, od_port_fit.csv   from od_matrix.py
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 INTERIM = ROOT / "data" / "interim"
 SAMPLE_DIR = INTERIM / "sample"
 PORTS_SELECTED = ROOT / "config" / "ports_selected.csv"

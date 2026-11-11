@@ -1,10 +1,10 @@
 """Select the ~100 ports for the network (crude-oil focused, tankers only in v1).
 
-Run from the repository root:  python config/select_ports.py
+Run from the repository root:  python scripts/ports/select_ports.py
 Needs:  pip install pandas pyarrow
 Run these first:
   python config/pull_ports_totals.py         (required: tons and ranks per port)
-  python config/pull_ports_static.py         (recommended: lat, lon, LOCODE, continent, names)
+  python scripts/data_pull/pull_ports_static.py         (recommended: lat, lon, LOCODE, continent, names)
 
 FORMULA (v2, changed from the DATA.md "Port selection" formula, which was 60 by total
 tons + 40 by tanker tons; see PARAMS and the comparison this script prints):
@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 INTERIM = REPO / "data/interim"
 OUT = REPO / "config/ports_selected.csv"
 COVERAGE = INTERIM / "ports_selected_coverage.csv"
