@@ -33,6 +33,7 @@ MAX_SPEED_KNOT = 14.0      # top of the range -> used for *minimum* transit days
 MAX_CONNECTORS = 3         # per port
 N_CANDIDATES = 8           # nearest junctions (great-circle) to evaluate per port
 MIN_SAVING = 0.05          # a new connector must be >=5% shorter than the via-existing-connector path
+FALLBACK_WINDOW = 0.15    # If no edges have been found for a port force nearest junction to be edge and 2nd closest if within 15% of closest edge
 MAX_CONNECTOR_NM = 1500    # sanity cap; anything longer is almost certainly a bad snap/route
 RESTRICTIONS = ["northwest"]   # searoute's default; keeps Arctic route out, all else open
 LENGTH_TOL = 0.005         # warn if a recomputed existing edge differs >0.5% from the file
@@ -187,14 +188,19 @@ def main():
 
         if not kept:
             # Fallback: no junction within MAX_CONNECTOR_NM. Use the nearest one that does not cross a
-            # chokepoint, and flag it: the real fix is a junction closer to this port.
-            ok = [c for c in evaluated if not c[2]]
+            # chokepoint, plus the next nearest if it is within FALLBACK_WINDOW (15%) of the nearest.
+            # Flagged as 'fallback': the real fix is a junction closer to this port.
+            ok = [c for c in evaluated if not c[2]]   # already sorted shortest first
             if ok:
-                length, jn, passages, p_snap, j_snap = ok[0]
-                add_edge(port, jn, length, passages, p_snap, j_snap, "fallback")
-                print(f"  fallback: {port.name} -> {jn} ({length:.0f} nm). Consider adding a junction nearby.")
+                picks = [ok[0]]
+                if len(ok) > 1 and ok[1][0] <= ok[0][0] * (1 + FALLBACK_WINDOW):
+                    picks.append(ok[1])
+                for length, jn, passages, p_snap, j_snap in picks:
+                    add_edge(port, jn, length, passages, p_snap, j_snap, "fallback")
+                    print(f"  fallback: {port.name} -> {jn} ({length:.0f} nm). Consider adding a junction nearby.")
             else:
                 print(f"  WARNING: {port.name} ({port.node_id}) got no connectors; add it to MANUAL_ATTACH")
+
 
     full = pd.concat([edges, pd.DataFrame(new_rows)], ignore_index=True)
     full["connector_kind"] = full.get("connector_kind")
