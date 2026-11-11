@@ -3,15 +3,15 @@ tons by vessel type) for 2019-01-01 to 2025-12-31.
 
 From the repository root:
     pip install requests pandas pyarrow
-    python config/pull_portwatch_transits_2019_2025.py
-    python config/pull_portwatch_transits_2019_2025.py --refresh  # re-fetch revisions
-    python config/pull_portwatch_transits_2019_2025.py --ports config/ports_selected.csv
-    python config/pull_portwatch_transits_2019_2025.py --workers 6  # years downloaded in parallel (default 4)
+    python config/pull_ports_daily_2019_2025.py
+    python config/pull_ports_daily_2019_2025.py --refresh  # re-fetch revisions
+    python config/pull_ports_daily_2019_2025.py --ports config/nodes.csv   # selected ports only (fast)
+    python config/pull_ports_daily_2019_2025.py --workers 6   # years downloaded in parallel (default 4)
 
 FAST PATH: pull_ports_totals.py ranks ports in seconds. After choosing ~100 ports,
-use --ports (a CSV with a `portid` or `portwatch_portid` column; other rows, such
-as junctions with no id, are ignored) to download only those ports' daily series.
-Filtered outputs get a _selected suffix.
+use --ports (a CSV with a `portid`, `portwatch_portid`, or `member_portids` column;
+other rows, such as junctions with no id, are ignored) to download only those ports'
+daily series. Filtered outputs get a _selected suffix.
 
 No API key is required. Outputs (never committed, data/ is git-ignored):
   data/raw/portwatch_ports_daily_raw.csv        every row, as downloaded
@@ -225,28 +225,23 @@ def print_sanity_check(df):
 
 
 def load_port_ids(path):
-    """Read canonical and merged PortWatch IDs from a CSV."""
-    ports = pd.read_csv(path, dtype=str)
-    values = []
-
-    for column in ("portid", "portwatch_portid"):
-        if column in ports.columns:
-            values.extend(ports[column].dropna().str.strip().tolist())
-
-    if "member_portids" in ports.columns:
-        members = (
-            ports["member_portids"]
-            .dropna()
-            .str.split(";")
-            .explode()
-            .str.strip()
+    """Read portids from a CSV (columns `member_portids`, `portid`, or `portwatch_portid`)."""
+    df = pd.read_csv(path, dtype=str)
+    cols = [c for c in ("member_portids", "portid", "portwatch_portid") if c in df.columns]
+    if not cols:
+        raise SystemExit(
+            f"{path} needs a `member_portids`, `portid`, or `portwatch_portid` column; has {list(df.columns)}"
         )
-        values.extend(members.tolist())
-
-    ids = sorted(set(values) - {""})
+    ids = set()
+    for col in cols:
+        for val in df[col].dropna():
+            for part in str(val).split(";"):
+                clean = part.strip()
+                if clean:
+                    ids.add(clean)
     if not ids:
-        raise SystemExit(f"No portids found in {path}; columns: {list(ports.columns)}")
-    return ids
+        raise SystemExit(f"No portids found in {path}")
+    return sorted(ids)
 
 
 def main():
