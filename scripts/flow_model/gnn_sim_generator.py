@@ -6,10 +6,13 @@ What it does:
   training data covering single-chokepoint throttles, single-lane closures, and
   multi-chokepoint compound crises.
 
-  Every edge is throttled at the Deliverable 4 levels [0.0, 0.25, 0.50, 0.75], where the level is
-  the share of pre-event crude throughput still available (0.0 = closed). Key multi-edge
-  combinations (Red Sea, Hormuz + Bab-el-Mandeb, Malacca + Sunda, Suez + Panama, Mediterranean)
-  are throttled together so the model sees compound crises, not just single-edge shocks.
+  Every sea corridor is throttled at the Deliverable 4 levels [0.0, 0.25, 0.50, 0.75], where the
+  level is the share of pre-event crude throughput still available (0.0 = closed): all 10
+  chokepoints and 69 lanes, 316 single-edge scenarios. Port connector edges are excluded because
+  they are port access, not sea corridors, and a scenario per connector would multiply the grid
+  without adding a distinct network state. Key multi-edge combinations (Red Sea, Hormuz +
+  Bab-el-Mandeb, Malacca + Sunda, Suez + Panama, Mediterranean) are throttled together so the
+  model sees compound crises, not just single-edge shocks.
 
   Each scenario is a full network solve, so the batch runs in a process pool by default
   (`--workers`). Results are identical to a serial run; only wall-clock time changes.
@@ -49,7 +52,8 @@ def _run_one(spec: tuple[str, dict[str, float]]) -> tuple[pd.DataFrame, dict]:
 
 def build_scenario_specs() -> list[tuple[str, dict[str, float]]]:
     edges = pd.read_csv(CONFIG_DIR / "edges.csv")
-    edge_ids = edges["edge_id"].astype(str).tolist()
+    # Sea corridors only: connectors are port access and would add 800 near-duplicate scenarios.
+    edge_ids = edges.loc[edges["edge_type"].isin(["lane", "chokepoint"]), "edge_id"].astype(str).tolist()
 
     scenario_specs: list[tuple[str, dict[str, float]]] = [("sim_baseline", {})]
 
