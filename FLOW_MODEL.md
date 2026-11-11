@@ -60,9 +60,9 @@ cost_per_barrel = (free_flow_days + delay_days) * daily_tanker_rate / barrels_pe
 ```
 
 `service_days` is the time a ship nominally spends being served at that edge: one day at a
-chokepoint (queue and convoy), and the sailing time itself on open water. Using the sailing time as
-the congestion base everywhere was an early mistake: a 400 nm lane has a 1.3 day base, so queueing
-on it looked almost free and the router never avoided a congested corridor.
+chokepoint (queue and convoy), and the sailing time itself on open water. The chokepoint base is the
+queue time, not the length of the segment, because a 400 nm lane has a 1.3 day base: congestion
+priced against sailing time is nearly free, and routes then never avoid a busy corridor.
 
 `barrels_per_ship` is taken from Deliverable 3 where the chokepoint has an observed vessel size
 (estimated oil volume divided by weekly tanker transits, clipped to 250k–2.2M barrels), and one
@@ -88,10 +88,10 @@ and no negative flows.
 
 ## 4. What a throttle means
 
-This is the decision that makes or breaks every scenario, and the first version got it wrong.
+This is the decision that makes or breaks every scenario.
 
 A throttle is a **fraction of pre-event crude throughput still available**. 0.0 is closed, 0.65
-means 65 % of the crude that used to pass still passes. Capacity follows from that:
+means 65 % of the edge's pre-event crude still passes. Capacity follows from that:
 
 ```
 capacity_weekly = throttle * baseline_transits(edge)          when throttle < 1
@@ -99,16 +99,15 @@ capacity_weekly = capacity_proxy                              when open
 throttle_factor = capacity_weekly / capacity_proxy            (reported, 0..1)
 ```
 
-The original version instead scaled `capacity_proxy` directly. That proxy counts **all tankers**
-(187 transit slots per week at Suez), while the modeled **crude** flow is only about 47 transits per
-week. Cutting the proxy in half still left 93 slots, so the cut never bound: the Panama drought
-produced no change at all, and Ever Given emptied the canal for a full week because its throttle was
-being applied to a number twice the size of the actual flow.
+Capacity is built from measured crude throughput rather than from `capacity_proxy`, because the
+proxy counts **all tankers** (187 transit slots per week at Suez) while the modeled **crude** flow is
+only about 47 transits per week. A throttle applied to the proxy leaves a ceiling far above the
+crude that actually uses the edge, so the cut does not bind: halving the proxy still leaves 93 slots
+against 47 transits of demand.
 
-Scaling the measured crude throughput fixes that, and the reported `throttle_factor` is converted
-back onto the Deliverable 3 basis so the column keeps the units the shared contract defines. At
-Suez, a throttle of 0.65 leaves 0.65 × 47.4 ≈ 30.8 transits per week, which is reported as
-`throttle_factor` ≈ 0.16 of the 187.5 proxy.
+The reported `throttle_factor` is converted back onto the Deliverable 3 basis so the column keeps
+the units the shared contract defines. At Suez, a throttle of 0.65 leaves 0.65 × 47.4 ≈ 30.8
+transits per week, which is reported as `throttle_factor` ≈ 0.16 of the 187.5 proxy.
 
 Edges that carried no crude at baseline fall back to `throttle * capacity_proxy`, so a throttled but
 unused edge is never reported as closed while still carrying flow.
