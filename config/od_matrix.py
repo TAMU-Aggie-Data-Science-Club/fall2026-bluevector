@@ -9,9 +9,18 @@ Then check the result:
 Inputs (data/interim/):
     country_flows.csv   exporter_iso3, importer_iso3, barrels_per_year   (Part 1)
     port_shares.csv     iso3, portid, direction (export/import), share   (Part 2)
-    port_totals.csv     portid, direction (export/import), tons_per_year (Part 2)
-                        Tanker tons per year over the baseline period. This format
-                        is an assumption: DELIVERABLE3 does not define it yet.
+    port_totals.csv     portid, export_tanker_bbl_yr, import_tanker_bbl_yr (Part 2)
+                        Wide-format table written by od_port_shares.py.
+    crude_share.csv     scope, crude_share, ...  (Part 3)
+                        Written by od_crude_share.py. The global_default row is used.
+                        NOTE: "crude share" here is really an OIL share of tanker
+                        throughput. EIA publishes total oil (crude + products), not
+                        crude-only, for 2020 onward. PortWatch capacity_tanker counts
+                        all liquid-bulk tankers in both directions (laden and ballast),
+                        so the ratio understates the true laden crude fraction. The
+                        per-chokepoint ratios all exceed 1.0 due to these mismatches
+                        and are not used; only the global Comtrade/PortWatch ratio is.
+                        If crude_share.csv is missing, falls back to CRUDE_SHARE_FALLBACK.
 
 Outputs (data/interim/, or data/interim/sample/ with --sample):
     od_matrix.csv       origin_portid, destination_portid, barrels_per_year
@@ -52,11 +61,34 @@ ROOT = Path(__file__).resolve().parents[1]
 INTERIM = ROOT / "data" / "interim"
 SAMPLE_DIR = INTERIM / "sample"
 
-BARRELS_PER_TONNE = 7.3   # DELIVERABLE3 base assumption
-CRUDE_SHARE = 0.6         # PLACEHOLDER until Part 3 calibrates it against EIA chokepoint flows
+BARRELS_PER_TONNE = 7.3     # DELIVERABLE3 base assumption
+CRUDE_SHARE_FALLBACK = 0.6  # used only when crude_share.csv is not found
 TOLERANCE = 1e-6
 MAX_ITERATIONS = 1000
-SEED_FILL = 0.0           # off. Else a fraction of the mean seed cell, e.g. 1e-4 (see Method)
+SEED_FILL = 0.0             # off. Else a fraction of the mean seed cell, e.g. 1e-4 (see Method)
+
+
+def load_crude_share():
+    """Read the global_default crude share from data/interim/crude_share.csv.
+
+    Falls back to CRUDE_SHARE_FALLBACK with a warning if the file is missing.
+    See od_crude_share.py for how the value is computed and its known limitations.
+    """
+    path = INTERIM / "crude_share.csv"
+    if not path.exists():
+        print(f"WARNING: {path} not found; using fallback CRUDE_SHARE = {CRUDE_SHARE_FALLBACK}. "
+              "Run config/od_crude_share.py first to calibrate.")
+        return CRUDE_SHARE_FALLBACK
+    df = pd.read_csv(path)
+    row = df[df["scope"] == "global_default"]
+    if row.empty:
+        print(f"WARNING: no global_default row in {path}; using fallback CRUDE_SHARE = {CRUDE_SHARE_FALLBACK}.")
+        return CRUDE_SHARE_FALLBACK
+    value = float(row["crude_share"].iloc[0])
+    print(f"Loaded CRUDE_SHARE = {value:.4f} from {path.relative_to(ROOT)} (global_default). "
+          "NOTE: this is an oil share of tanker throughput, not a crude-only share — "
+          "see crude_share.csv notes and od_crude_share.py for details.")
+    return value
 
 
 def make_sample():
@@ -74,14 +106,17 @@ def make_sample():
          ("NOR", "portX1", "export", 1.0)],  # NOR has no country flows: can't be fitted
         columns=["iso3", "portid", "direction", "share"],
     )
-    # Tons chosen so the seed does NOT already match, giving IPF something to fix.
+    # Barrels chosen so the seed does NOT already match, giving IPF something to fix.
+    # Wide format matches what od_port_shares.py writes (export_tanker_bbl_yr / import_tanker_bbl_yr).
     port_totals = pd.DataFrame(
-        [("portA1", "export", 150e6), ("portA2", "export", 90e6),
-         ("portU1", "export", 25e6), ("portU2", "export", 30e6),
-         ("portU1", "import", 20e6), ("portU2", "import", 35e6),
-         ("portC1", "import", 140e6), ("portN1", "import", 70e6),
-         ("portX1", "export", 40e6)],
-        columns=["portid", "direction", "tons_per_year"],
+        [("portA1", 1095e6, 0.0),
+         ("portA2", 657e6,  0.0),
+         ("portU1", 182.5e6, 146e6),
+         ("portU2", 219e6,  255.5e6),
+         ("portC1", 0.0,   1022e6),
+         ("portN1", 0.0,   511e6),
+         ("portX1", 292e6, 0.0)],
+        columns=["portid", "export_tanker_bbl_yr", "import_tanker_bbl_yr"],
     )
     return country_flows, port_shares, port_totals
 
@@ -121,12 +156,10 @@ def build_seed(country_flows, port_shares):
     return seed[["origin_portid", "destination_portid", "barrels_per_year"]]
 
 
-def build_targets(port_totals):
-    """Port target barrels per year, one Series per direction, indexed by portid."""
-    barrels = port_totals["tons_per_year"] * CRUDE_SHARE * BARRELS_PER_TONNE
-    targets = port_totals.assign(barrels_per_year=barrels)
-    export_target = targets[targets["direction"] == "export"].set_index("portid")["barrels_per_year"]
-    import_target = targets[targets["direction"] == "import"].set_index("portid")["barrels_per_year"]
+def build_targets(port_totals, crude_share):
+    """Port target barrels per year, indexed by portid."""
+    export_target = port_totals.set_index("portid")["export_tanker_bbl_yr"] * crude_share
+    import_target = port_totals.set_index("portid")["import_tanker_bbl_yr"] * crude_share
     return export_target, import_target
 
 
@@ -166,9 +199,9 @@ def ipf(seed, row_goal, col_goal):
     return matrix, iteration, gap
 
 
-def fit(country_flows, port_shares, port_totals):
+def fit(country_flows, port_shares, port_totals, crude_share):
     seed_long = build_seed(country_flows, port_shares)
-    export_target, import_target = build_targets(port_totals)
+    export_target, import_target = build_targets(port_totals, crude_share)
 
     origins = sorted(set(seed_long["origin_portid"]) | set(export_target.index))
     destinations = sorted(set(seed_long["destination_portid"]) | set(import_target.index))
@@ -261,6 +294,8 @@ def main():
                         help="use small made-up inputs and write to data/interim/sample/")
     args = parser.parse_args()
 
+    crude_share = load_crude_share()
+
     if args.sample:
         out_dir = SAMPLE_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -273,7 +308,7 @@ def main():
         out_dir = INTERIM
         country_flows, port_shares, port_totals = load_inputs(INTERIM)
 
-    od, port_fit = fit(country_flows, port_shares, port_totals)
+    od, port_fit = fit(country_flows, port_shares, port_totals, crude_share)
     od.to_csv(out_dir / "od_matrix.csv", index=False)
     port_fit.to_csv(out_dir / "od_port_fit.csv", index=False)
 
