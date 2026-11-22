@@ -40,14 +40,14 @@ searoute ──┘                                                       ├→ 
 | 1 | Sources | APIs and downloads | raw tables | requests, `comtradeapicall`, pandas | source checks in `DATA.md` |
 | 2 | Ports and graph | PortWatch, searoute, NGA | `config/nodes.csv`, `config/edges.csv` | pandas, searoute, NetworkX | 33 graph checks, 32 pass |
 | 3 | OD matrix | Comtrade, PortWatch, EIA | `data/interim/od_matrix.csv` | pandas, IPF | 5,380 pairs, 12.11 G bbl/yr |
-| 4 | Flow model | graph + OD + parameters | `data/processed/scenario_edge_flows.parquet` | NetworkX, NumPy | H1 share error 0.0003 |
+| 4 | Flow model | graph + OD + parameters | `data/processed/scenario_edge_flows.parquet` | NetworkX, NumPy | H1 share error 0.0145 |
 | 5 | Validation | PortWatch events, EIA voyage benchmark | `validation_report.csv`, `corridor_delays_validation.csv` | pandas | 3 held-out events |
 | 6 | GNN | 337 simulated scenarios + observed weeks | `gnn_edge_predictions.parquet` (**planned**) | PyTorch Geometric | scored against the solver |
 | 7 | Price | edge outputs + Brent | `price_backtest_report.csv` (**planned**) | statsmodels, scikit-learn | vs random walk |
 | 8 | Dashboard | graph + scenario outputs | Streamlit app (**built, partial**) | Streamlit, PyDeck, Kepler.gl | manual review |
 
 **Scale.** 142 nodes (100 ports, 42 junctions), 279 edges (10 chokepoints, 69 lanes, 200 connectors),
-5,380 port pairs, 232,164,410 barrels per week in the baseline.
+5,380 port pairs, 151,748,398 barrels of crude per week in the baseline.
 
 ---
 
@@ -362,8 +362,8 @@ repeat:
 until max relative gap < 1e-6, or 1000 passes
 ```
 
-**Result.** 5,380 port pairs, 100 ports, **12.11 billion barrels per year** =
-232,164,410 barrels per week.
+**Result.** 5,380 port pairs, 100 ports, **7.91 billion barrels of crude per year** =
+151,748,398 barrels per week.
 
 **Checks** (`od_matrix/od_checks.py`): schema, no NaN, no negatives, no duplicate pairs, no
 self-pairs, no domestic pairs, row and column sums within 0.01 %, and share sums of 1. All pass.
@@ -392,6 +392,7 @@ and it is the baseline the GNN must beat.
 | `awrp_red_sea_h1/h2_usd_per_bbl` | $0.50 / $1.00 | sourced: AWRP 0.5–1.0 % of hull value per transit, converted on a Suezmax basis |
 | `chokepoint_queue_days` | 1.0 | queue and convoy base, not sailing time |
 | `max_util_for_delay` | 5.0 | caps the BPR curve |
+| `allow_over_capacity` | true | a throttle raises cost above capacity instead of deleting the edge; only `throttle = 0` closes one |
 | `n_congestion_iters` | 10 | incremental loading passes |
 
 ### 4.3 One solve, in order
@@ -416,13 +417,20 @@ and it is the baseline the GNN must beat.
    (`networkx.single_source_dijkstra`), weights non-negative. One pass moves **1/10** of every OD
    pair, then costs are recomputed from the flows so far — incremental loading, the standard
    Frank-Wolfe-style approximation of user equilibrium.
-5. **Saturation.** A throttled edge at 98 % of its available throughput is removed for the remaining
-   passes; its cargo reroutes or strands. Unthrottled lanes keep only the soft BPR curve, because
-   their capacity proxy is a historical percentile, not a physical wall.
+5. **Queue above capacity.** A throttle lowers `capacity_weekly`; it does not delete the edge.
+   Traffic above capacity keeps moving and pays the queue term, 10 days per unit of excess
+   utilisation. Only a closed edge (`throttle = 0`) is removed, which is what lets Hormuz strand
+   21 % of crude. Unthrottled lanes keep only the soft BPR curve, because their capacity proxy is a
+   historical percentile, not a physical wall.
 6. **Record.** Demand with no path is `stranded`.
 
-There is no min-cost-flow solve: capacity acts through loading and arc removal, so the result is an
-approximate equilibrium, not a capacitated optimum. That is a documented choice, not an oversight.
+There is no min-cost-flow solve: capacity acts through loading and the queue price, so the result is
+an approximate equilibrium, not a capacitated optimum. That is a documented choice, not an oversight.
+
+A hard cut at 98 % of capacity, as the model used to apply, kept utilisation below 1.0 always, which
+left α and β with nothing to do. Priced instead, the Ever Given week runs Suez at 204 % of capacity
+with 10.8 days of queueing, and α/β still move the answer by only about a point because the linear
+queue carries 10.4 of those days.
 
 ### 4.4 What a throttle means
 
@@ -436,8 +444,8 @@ throttle_factor  = capacity_weekly / capacity_proxy     # reported on the D3 bas
 ```
 
 Using `capacity_proxy` directly would not bind: the proxy counts all tankers (187.5 slots/week at
-Suez) while the crude model routes about 47.4 transits/week. At 0.65 the edge keeps
-`0.65 × 47.4 ≈ 30.8` crude transits, reported as `throttle_factor ≈ 0.16` of the proxy.
+Suez) while the crude model routes about 32.3 transits/week. At 0.65 the edge keeps
+`0.65 × 32.3 ≈ 21.0` crude transits, reported as `throttle_factor ≈ 0.11` of the proxy.
 
 ### 4.5 Output contract — 22 columns
 
@@ -457,22 +465,24 @@ comparing crude transits directly with an all-tanker mean would build a permanen
 
 Throttles come from the event, never from the answer being scored.
 
-| Scenario | Throttle | Reason |
+| Scenario | Setting | Reason |
 |---|---|---|
 | `baseline` | 1.0 | nothing closed |
-| `red_sea_2024` | Suez and Bab-el-Mandeb 0.65 | calibrated on Dec 2023–Feb 2024 |
+| `red_sea_2023h1` (Dec–Feb) / `red_sea_2024` (Mar–Jun) | no throttle; $0.50 / $1.00 per bbl war-risk premium at Bab-el-Mandeb | Suez stayed open, so the diversion is a price response |
 | `ever_given_2021` | Suez 1/7 ≈ 0.14 | canal blocked 6 of 7 days in the peak week |
 | `panama_drought_2023` | Panama 24/36 ≈ 0.67 | daily booking slots cut from ~36 to 24 |
 
 | Scenario | Suez transits/wk | Suez share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 47.4 | 0.7254 | 0 |
-| Red Sea 2024 | 30.6 | 0.5415 | 820,704 |
-| Ever Given 2021 | 6.8 | 0.1630 | 0 |
-| Panama drought 2023 | 47.5 | 0.7256 | 0 |
+| baseline | 32.3 | 0.7136 | 0 |
+| Red Sea H1 | 22.3 | 0.5557 | 0 |
+| Red Sea H2 | 10.0 | 0.3279 | 0 |
+| Ever Given 2021 | 9.4 | 0.2883 | 0 |
+| Panama drought 2023 | 32.3 | 0.7136 | 0 |
 
-Panama barely moves Suez, which is correct: a canal on the other side of the world should not change
-Red Sea traffic. Its effect is local: Panama 69.4 → 48.6 transits, about −30 %.
+Only a full closure strands anything. Panama barely moves Suez, which is correct: a canal on the
+other side of the world should not change Red Sea traffic. Its effect is local: Panama 62.2 → 54.5
+transits, about −12 %, at 131 % of capacity and 3.1 days of queueing.
 
 Every scenario has all 279 edges, so `scenario_edge_flows.parquet` has 1,116 rows.
 
@@ -483,10 +493,10 @@ Every chokepoint and the 15 busiest lanes closed one at a time (`edge_criticalit
 | Edge | Stranded share | Extra ton-miles | Extra days | Note |
 |---|---|---|---|---|
 | Hormuz | 21.19 % | 0 % | 0 | true single point of failure |
-| Gibraltar | 0 % | +16.17 % | +2.76 | worst rerouting burden without stranding |
-| Bab-el-Mandeb | 0 % | +10.18 % | +1.74 | Cape detour |
-| Suez | 0 % | +9.27 % | +1.59 | Cape detour |
-| Panama | 0 % | +9.16 % | +1.57 | |
+| Gibraltar | 0 % | +19.07 % | +3.43 | worst rerouting burden without stranding |
+| Bab-el-Mandeb | 0 % | +10.37 % | +1.81 | Cape detour |
+| Suez | 0 % | +9.40 % | +1.70 | Cape detour |
+| Panama | 0 % | +9.27 % | +1.59 | |
 | Bosporus | 2.38 % | 0 % | 0 | no sea alternative |
 
 Lane closures are ranked separately (`rank_scope = lane_sensitivity`), because a 1,000 nm lane is one
@@ -501,8 +511,10 @@ never ranked against physical chokepoints.
 
 Grid: α ∈ {0.10, 0.12, 0.15}, β ∈ {3, 4} = **6 solves**. The Red Sea throughput cut is gone
 (Suez stayed open) and the war-risk premium is sourced, so nothing about the crisis is fitted. All
-six points produce identical results — the congestion curve is not identified at these
-utilisations, and the model is determined entirely by its inputs.
+six points produce identical Red Sea results — the congestion curve is not identified at these
+utilisations, and the model is determined entirely by its inputs. Under Ever Given the grid moves the
+Suez drop from −70.8 % to −71.6 %, because the over-capacity queue carries 10.4 of the 11.3 delay
+days.
 
 ```
 loss = |Suez%_model − Suez%_observed| / 100
@@ -523,7 +535,7 @@ Total loss 0.3404, dominated by the Cape term (0.312). The share target (< 0.05)
 missed on H2, where the ~1 % January premium over-diversifies a spring window whose rates averaged
 below their peak.
 
-The Cape is what no input fixes. About 1.2 Cape transits move per Suez transit lost (+37.7 % against
+The Cape is what no input fixes. About 0.5 Cape transits move per Suez transit lost (+37.7 % against
 −30.9 %); the observation is 2.34 (68.8 % against 29.5 %). More premium drives Suez past the
 observation without buying the Cape response, which points at the corridor's absorption — its
 re-based capacity of 16.8 transits/week against a 548k-bbl parcel.
@@ -567,10 +579,12 @@ unrelated lanes.
 
 ### 5.5 What validation does not prove
 
-- One throttle cannot represent a crisis whose intensity changed weekly.
-- The model under-predicts where diverted traffic lands (Cape +44 % vs +69 % in H1, +123 % in H2).
-- Ever Given overshoots (−86 % modelled vs −76 % observed) because the throttle lasts a full week
-  while the canal reopened after six days.
+- One premium per window cannot represent a crisis whose intensity changed weekly.
+- The model under-predicts where diverted traffic lands (Cape +37.7 % vs +68.8 % in H1, +65.0 % vs
+  +123.2 % in H2).
+- Ever Given overshoots the Cape (+79 % modelled vs +5.7 % observed) because the throttle lasts a
+  full week while the canal reopened after six days, and the model has no time dimension.
+- The over-capacity queue is a straight line, so delay above capacity is priced, not derived.
 - Panama sends almost nothing to the Cape, where reality added 51 %.
 
 ---
@@ -643,6 +657,8 @@ edge_cost_per_bbl(r)  = edge_days × r / barrels_per_ship + toll_per_bbl
 ```
 
 At r = $35k / $50k / $75k per day. The three values are a freight uncertainty band, not a forecast.
+The war-risk premium is not in this formula yet: the flow model charges it as a separate
+`awrp_per_bbl`, so a Red Sea scenario's freight cost and its total route cost differ by $0.50–$1.00.
 Fleet cost is barrel-weighted across edges; scenario values are changes against baseline.
 
 ### 7.2 Three indices, one function
@@ -697,9 +713,9 @@ badly on four weeks is probably luck.
 
 | Item | Current | Calibrated / source of truth |
 |---|---|---|
-| Red Sea preset | `suez = 0.35`, `babalmandab = 0.35` | 0.65 in `flow_params.json` |
+| Red Sea preset | `suez = 0.35`, `babalmandab = 0.35` | no throttle; $0.50/bbl war-risk premium at Bab-el-Mandeb (`awrp_red_sea_h1_usd_per_bbl`) |
 | Default BPR sliders | α 0.18, β 3.8 | α 0.10, β 3.0 |
-| Baseline Suez share shown in the KPI delta | hardcoded 0.611 | 0.7254 |
+| Baseline Suez share shown in the KPI delta | hardcoded 0.611 | 0.7136 |
 | Slider semantics | "0 = closed, 1 = open" | same fraction-of-throughput meaning; the presets are what is wrong |
 
 The dashboard intentionally shows physical metrics only (Deliverables 3–4). Price belongs to
@@ -722,9 +738,9 @@ Only three events can be checked against data; everything else is a what-if and 
 
 | Event | Date | Mechanism | Modelled as | Observed | Model |
 |---|---|---|---|---|---|
-| Red Sea / Houthi diversions | Dec 2023 – 2024 | war-risk rerouting | AWRP $0.50/bbl (H1) / $1.00 (H2) at Bab-el-Mandeb; no throughput cut | Suez −37.5 % full window (H1 −29.5 %, H2 −43.5 %); Cape +69 % then +123 %; share 0.725 → 0.541 | Suez −30.9 %; share 0.5557 |
-| Ever Given | 23–29 Mar 2021 | channel blocked | Suez 1/7 | Suez −76 % in the peak week | −86 % |
-| Panama drought | 2023 – 2024 | draft and slot limits | Panama 24/36 = 0.67 | canal −26 %; slots 36 → 24/day | −30 %; almost no Cape response |
+| Red Sea / Houthi diversions | Dec 2023 – 2024 | war-risk rerouting | AWRP $0.50/bbl (H1) / $1.00 (H2) at Bab-el-Mandeb; no throughput cut | Suez −37.5 % full window (H1 −29.5 %, H2 −43.5 %); Cape +69 % then +123 %; share 0.714 → 0.541 | Suez −30.9 %; share 0.5557 |
+| Ever Given | 23–29 Mar 2021 | channel blocked | Suez 1/7 | Suez −76 % in the peak week | −70.8 %; Cape +79 % against +5.7 % |
+| Panama drought | 2023 – 2024 | draft and slot limits | Panama 24/36 = 0.67 | canal −25.8 %; Cape +51.4 %; slots 36 → 24/day | −12.4 %; no Cape response |
 
 **What-if set** (no observed event, always labelled): Hormuz, Malacca, Bab-el-Mandeb alone, Gibraltar,
 Bosporus, Cape of Good Hope, Sunda, Magellan, and compound cases.
@@ -736,13 +752,16 @@ model's check that a true single point of failure behaves like one.
 
 ## 10. Limits
 
-1. **One Red Sea intensity.** A single throttle fits H1 (0.0003) and misses H2 (0.125); the crisis
-   deepened and a time-varying throttle is not implemented.
-2. **Displaced traffic is the weak spot.** Cape +44 % modelled vs +69 %/+123 % observed. Partly the
-   crude-only basis, partly that real operators redeployed more capacity than a cost-minimising
-   router does.
-3. **Ever Given overshoots** because the throttle lasts a full week against a six-day blockage.
-4. **Lane closures are a graph-resolution artifact** — a natural detour would cut through a port,
+1. **One Red Sea intensity per window.** One sourced premium fits H1 (share error 0.0145) and misses
+   H2 (0.089); the crisis deepened and a time-varying premium is not implemented.
+2. **Displaced traffic is the weak spot.** Cape +37.7 % modelled against +68.8 % observed in H1, and
+   +65.0 % against +123.2 % in H2. Partly the crude-only basis, partly that real operators
+   redeployed more capacity than a cost-minimising router does.
+3. **Ever Given overshoots the Cape** — +79 % modelled against +5.7 % observed — because the throttle
+   lasts a full week against a six-day blockage and the model has no time dimension.
+4. **The over-capacity queue is a straight line.** Ten days per unit of excess utilisation is an
+   assumption with no source; a real queue diverges as utilisation approaches 1.
+5. **Lane closures are a graph-resolution artifact** — a natural detour would cut through a port,
    which the port rule forbids — so lanes are ranked separately.
 5. **Capacity is statistical.** Only throttled edges get a hard ceiling; a real canal also has a
    draft limit represented here only through observed vessel sizes.
@@ -769,7 +788,7 @@ representation → demand → physics → evidence → learning → money → pr
 | A4 Graph checks | Can the graph be trusted? | 33 checks, 32 pass, 1 warn | 8 long-snap edges | `config/validation_results.csv` |
 | A5 OD matrix | Who sends crude to whom? | port total → share → seed → IPF | 5,380 pairs, 12.11 G bbl/yr, gap < 1e-6 | `data/interim/od_matrix.csv` |
 | A6 Crude share | Why 0.8511? | before/after table with the >1 ratios | Malacca 1.044, Hormuz 1.202 → 0.8511 | `data/interim/crude_share.csv` |
-| A7 Flow model | How does a closure propagate? | 6-step solve diagram, cost equation | 232,164,410 bbl/wk; 0 stranded | `FLOW_MODEL.md` |
+| A7 Flow model | How does a closure propagate? | 6-step solve diagram, cost equation | 151,748,398 bbl/wk; 0 stranded | `FLOW_MODEL.md` |
 | A8 Validation | How wrong is it? | H1/H2 split, event scorecard, corridor check | share error 0.0145; H2 0.089; extra days 0.85 | `validation_report.csv` |
 
 ### 11.2 Flowchart B — "Learning → money → product"
@@ -883,7 +902,7 @@ model output kept in version control, so both halves of Deliverable 5 work from 
 - baseline stranded = 0;
 - no negative volumes;
 - a closed edge carries zero flow;
-- Suez share still near 0.7254 baseline / 0.5415 in the Red Sea scenario.
+- Suez share still near 0.7136 baseline / 0.5557 in the Red Sea H1 scenario.
 
 ---
 

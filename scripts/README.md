@@ -14,12 +14,13 @@ graph tables these scripts read and write (Deliverable 4 loads `config/nodes.csv
 | `od_matrix/` | `od_country_flows.py`, `od_port_shares.py`, `od_crude_share.py`, `od_matrix.py`, `od_checks.py` | Build and check the OD matrix in `data/interim/` |
 | `flow_model/` | `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | Route the OD matrix over the graph, compute edge metrics, run scenarios and criticality |
 | `validation/` | `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | Observed benchmarks, Red Sea calibration, event validation |
-| `gnn/` | `gnn_model.py` | Edge-centric GNN (plain PyTorch): 4 per-edge predictions plus an 8-value graph embedding (Deliverable 5, G2) |
+| `gnn/` | `gnn_dataset.py`, `gnn_model.py` | Build the edge-centric training table from flow-model scenarios, then the GNN itself (plain PyTorch): 4 per-edge predictions plus an 8-value graph embedding (Deliverable 5, G2) |
+| `price/` | `shipping_cost.py`, `network_indices.py`, `brent_model.py` | Shipping cost per barrel from network output, the three scenario indices, and the Brent model with intervals and a random-walk benchmark (Deliverable 5, E1/E2) |
 
 ## Technology and algorithms
 
 - **Tables:** Python 3, pandas, NumPy, pyarrow (Parquet).
-- **Graph:** NetworkX. The flow model uses single-source Dijkstra (one run per origin port, weights in dollars per barrel) inside a ten-pass incremental loading loop with BPR congestion and arc saturation. The graph builders use all-pairs Dijkstra to decide port connectors, and shortest paths for connectivity and alternative-route checks.
+- **Graph:** NetworkX. The flow model uses single-source Dijkstra (one run per origin port, weights in dollars per barrel) inside a ten-pass incremental loading loop with BPR congestion and a queue price above capacity, so a throttle makes an edge expensive rather than removing it. The graph builders use all-pairs Dijkstra to decide port connectors, and shortest paths for connectivity and alternative-route checks.
 - **Distances and geometry:** searoute, GeoPandas, Shapely.
 - **Fitting and scoring:** iterative proportional fitting (IPF/RAS) for the OD matrix, percentile capacity proxies, grid-search calibration with an H1/H2 time split, and MAE, RMSE, MAPE and direction match for validation.
 - **Batch runs:** a `multiprocessing` process pool for the 337-scenario GNN set (`--workers`).
