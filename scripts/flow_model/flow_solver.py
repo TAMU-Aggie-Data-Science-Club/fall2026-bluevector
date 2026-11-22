@@ -49,11 +49,12 @@ DEFAULT_PARAMS = {
     "beta": 3.0,
     "daily_tanker_rate": 50000.0,
     "avg_barrels_per_transit": 1000000.0,
-    # Fraction of pre-crisis crude throughput retained at Suez / Bab-el-Mandeb (fitted, see calibrate_flow.py)
-    "red_sea_throttle": 0.65,
-    # War-risk insurance surcharge at full disruption, $/bbl (linear in the lost throughput share)
-    "red_sea_war_risk_per_bbl": 0.60,
-    "risk_passages": ["suez", "babalmandab"],
+    # No throughput cut by default: the Red Sea canal stayed open through 2024, so the diversion was
+    # a price response. A throughput cut is reserved for closures that were physical (Ever Given,
+    # Panama slots).
+    # Additional war-risk premium in $/bbl, charged once per transit through a listed area.
+    "awrp_usd_per_bbl": 0.0,
+    "risk_passages": [],
     # Nominal queue / convoy service time used as the BPR base for chokepoints (days)
     "chokepoint_queue_days": 1.0,
     "max_util_for_delay": 5.0,
@@ -154,7 +155,7 @@ def solve_network(
     max_util = float(params.get("max_util_for_delay", 5.0))
     # C: waiting time charged per unit of demand above capacity (days). See the delay formula.
     over_cap_days = float(params.get("over_capacity_delay_days_per_unit", 10.0))
-    war_risk = float(params.get("red_sea_war_risk_per_bbl", 0.0))
+    awrp = float(params.get("awrp_usd_per_bbl", 0.0))
     risk_passages = {str(p).strip().lower() for p in params.get("risk_passages", [])}
 
     # Build lookup from portwatch_portid -> graph node_id (e.g. 'port1091' -> 'port_port1091')
@@ -241,7 +242,7 @@ def solve_network(
             # BPR congestion acts on the nominal queue/convoy time at a chokepoint, not on the
             # length of a 300-500 nm edge segment (which would make waiting almost free).
             "service_days": queue_days if e_type == "chokepoint" else free_flow_days,
-            "risk_per_bbl": war_risk if (through_frac < 1.0 and passage in risk_passages) else 0.0,
+            "risk_per_bbl": awrp if (awrp > 0.0 and passage in risk_passages) else 0.0,
             "delay_days": 0.0,
             "removed": False,
         }
@@ -329,8 +330,11 @@ def solve_network(
             m["delay_days"] = delay
             voyage_cost_bbl = ((m["free_flow_days"] + delay) * daily_rate) / m["bbl_per_ship"]
 
-            # Partial closure of a conflict-zone chokepoint adds a war-risk insurance surcharge
-            risk_penalty = m["risk_per_bbl"] * (1.0 - m["throughput_factor"])
+            # A listed war-risk area adds a flat insurance premium per transit. It is not scaled by the
+            # lost throughput share: insurers quote a percentage of hull value per transit whether or
+            # not the passage is also slowed, and charging it per chokepoint would bill one voyage
+            # twice (see risk_passages: one gate per listed area).
+            risk_penalty = m["risk_per_bbl"]
 
             cost_bbl = voyage_cost_bbl + m["toll_per_bbl"] + risk_penalty
 
@@ -419,7 +423,7 @@ def solve_network(
             delay_days = m["delay_days"]
 
         voyage_cost_bbl = ((m["free_flow_days"] + delay_days) * daily_rate) / m["bbl_per_ship"]
-        risk_penalty = m["risk_per_bbl"] * (1.0 - m["throughput_factor"])
+        risk_penalty = m["risk_per_bbl"]
         cost_per_bbl = voyage_cost_bbl + m["toll_per_bbl"] + risk_penalty
 
         rows.append(

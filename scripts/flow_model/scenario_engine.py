@@ -38,6 +38,18 @@ EVER_GIVEN_THROUGHPUT = 1.0 / 7.0
 # Panama drought: ACP cut daily booking slots from ~36 to 24 (Oct 2023 - Mar 2024)
 PANAMA_THROUGHPUT = 24.0 / 36.0
 
+# Red Sea war-risk premium, sourced rather than fitted. Insurers quote an additional war-risk
+# premium (AWRP) as a percentage of hull value per transit through a JWC-listed area: Lloyd's List
+# (5 Jan 2024) reports 0.3-0.35 %, Lloyd's List (17 Jan 2024) and Reuters (16 Jan 2024) report ~1 %,
+# and OECD/ITF (Mar 2024) summarises the same range. Converted on a Suezmax basis -- $100M hull,
+# 1M bbl cargo -- that is $0.30-0.35/bbl in early January and $1.00/bbl from mid-January.
+# H1 (Dec 2023 - Feb 2024) averages 0.5 %, H2 (Mar - Jun 2024) sits at the ~1 % peak.
+AWRP_RED_SEA_H1_USD_PER_BBL = 0.50
+AWRP_RED_SEA_H2_USD_PER_BBL = 1.00
+# One insurance bill per transit, not per chokepoint: charge at the southern gate of the listed area
+# (Bab-el-Mandeb) and not again at Suez.
+RED_SEA_RISK_PASSAGES = ["babalmandab"]
+
 _BASE_CACHE: dict = {}
 # A: per-parameter-set capacity re-basing (see _network_capacity_override).
 _CAPACITY_OVERRIDES: dict = {}
@@ -119,13 +131,39 @@ def get_baseline(params_override: dict | None = None):
 
 
 def event_scenarios(params: dict | None = None) -> dict[str, dict[str, float]]:
-    """Historical disruption scenarios as throughput fractions of pre-event crude flow."""
-    params = params or load_params()
-    red_sea = float(params.get("red_sea_throttle", 0.65))
+    """Historical disruption scenarios as throughput fractions of pre-event crude flow.
+
+    The Red Sea entries are deliberately empty. Suez stayed open throughout Dec 2023 - Jun 2024, so
+    modelling the diversion as a capacity cut would replay the observation inside the constraint
+    that is supposed to predict it. The diversion has to come from the sourced premium in
+    `event_scenario_params`. Only the two physical closures, Ever Given and the Panama slots, cut
+    throughput.
+    """
     return {
-        "red_sea_2024": {"suez": red_sea, "babalmandab": red_sea},
+        "red_sea_2023h1": {},
+        "red_sea_2024": {},
         "ever_given_2021": {"suez": EVER_GIVEN_THROUGHPUT},
         "panama_drought_2023": {"panama": PANAMA_THROUGHPUT},
+    }
+
+
+def event_scenario_params() -> dict[str, dict]:
+    """Per-scenario parameter overrides: the sourced war-risk premium for each window.
+
+    The premium comes from the insurance market, not from the transit counts the scenarios are
+    scored against, so using the H2 value on H2 does not make the held-out test circular.
+    """
+    return {
+        "red_sea_2023h1": {
+            "awrp_usd_per_bbl": AWRP_RED_SEA_H1_USD_PER_BBL,
+            "risk_passages": RED_SEA_RISK_PASSAGES,
+        },
+        "red_sea_2024": {
+            "awrp_usd_per_bbl": AWRP_RED_SEA_H2_USD_PER_BBL,
+            "risk_passages": RED_SEA_RISK_PASSAGES,
+        },
+        "ever_given_2021": {},
+        "panama_drought_2023": {},
     }
 
 
@@ -276,11 +314,17 @@ def main():
     base_df, _ = get_baseline(None)
     scenarios = [("baseline", {})]
     scenarios += [(sc_id, th) for sc_id, th in event_scenarios().items()]
+    scen_params = event_scenario_params()
 
     frames = []
     summaries = []
     for sc_id, th in scenarios:
-        df, s = run_scenario(th, scenario_id=sc_id, save_files=(sc_id == "baseline"))
+        df, s = run_scenario(
+            th,
+            scenario_id=sc_id,
+            save_files=(sc_id == "baseline"),
+            params_override=scen_params.get(sc_id) or None,
+        )
         frames.append(df)
         summaries.append(s)
 

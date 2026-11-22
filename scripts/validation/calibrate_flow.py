@@ -1,14 +1,19 @@
-"""Deliverable 4 — Calibration & Validation Group, Part 2: Red Sea Parameter Calibration.
+"""Deliverable 4 — Calibration & Validation Group, Part 2: Red Sea calibration (v2, sourced inputs).
 
-What it does:
-  Grid-searches (alpha, beta, Red Sea throughput loss, war-risk surcharge) against the observed
-  Dec 2023 - Feb 2024 (H1) Red Sea chokepoint shifts from validation_targets.csv: the Suez and
-  Bab-el-Mandeb transit drops, the Cape of Good Hope transit rise, and the Suez / (Suez + Cape)
-  transit share. The winning parameter set is scored once on the held-out Mar-Jun 2024 (H2)
-  window and written to config/flow_params.json.
+What changed from the fitted-throttle version
+  * The Red Sea scenario no longer cuts throughput. Suez stayed open through Dec 2023 - Jun 2024, so
+    the diversion was a price response; treating it as a capacity cut would replay the observation
+    inside the constraint that is supposed to predict it. Throughput cuts stay for the two closures
+    that were physical (Ever Given, Panama slots).
+  * The war-risk premium is a sourced insurance rate (an AWRP as a share of hull value per transit),
+    charged once per listed-area transit. It is not fitted and not scaled by any throttle.
+  * That leaves alpha/beta as the only free parameters, so both the Suez drop and the Cape rise are
+    predictions rather than fitted outputs.
 
-  The H1/H2 split is what makes the calibration honest: H1 is fitted, H2 is never used to pick
-  parameters, so validation accuracy on H2 is a genuine out-of-sample test.
+What it still does
+  Grid-searches (alpha, beta) on the observed Dec 2023 - Feb 2024 (H1) Red Sea chokepoint shifts
+  from validation_targets.csv, scores the winner once on the held-out Mar - Jun 2024 (H2) window,
+  and writes config/flow_params.json.
 
 Run from the repository root:
     .venv/bin/python scripts/validation/calibrate_flow.py
@@ -24,7 +29,14 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.flow_model.scenario_engine import get_baseline, run_scenario
+from scripts.flow_model.scenario_engine import (
+    AWRP_RED_SEA_H1_USD_PER_BBL,
+    AWRP_RED_SEA_H2_USD_PER_BBL,
+    RED_SEA_RISK_PASSAGES,
+    event_scenario_params,
+    get_baseline,
+    run_scenario,
+)
 from scripts.validation.validation_targets import build_validation_targets
 
 CONFIG_DIR = ROOT / "config"
@@ -69,6 +81,10 @@ def calibrate() -> dict:
 
     obs = _observed(calib_df)
     obs_holdout = _observed(holdout_df)
+    scen_params = event_scenario_params()
+    h1_params = scen_params["red_sea_2023h1"]
+    h2_params = scen_params["red_sea_2024"]
+
     print(
         "Observed Red Sea H1 targets: "
         f"Suez={obs['suez_pct']:+.1f}%, Bab-el-Mandeb={obs['bab_pct']:+.1f}%, "
@@ -79,6 +95,11 @@ def calibrate() -> dict:
         f"Suez={obs_holdout['suez_pct']:+.1f}%, Cape={obs_holdout['cape_pct']:+.1f}%, "
         f"share={obs_holdout['share']:.3f}"
     )
+    print(
+        f"Sourced premium: H1 ${h1_params['awrp_usd_per_bbl']:.2f}/bbl, H2 "
+        f"${h2_params['awrp_usd_per_bbl']:.2f}/bbl, charged on {RED_SEA_RISK_PASSAGES}. "
+        "No throughput cut in either window."
+    )
 
     best_loss = float("inf")
     best: dict | None = None
@@ -88,45 +109,34 @@ def calibrate() -> dict:
         for beta in (3.0, 4.0):
             ab_override = {"alpha": alpha, "beta": beta}
             base_df, _ = get_baseline(ab_override)
-            # Grid bounds, not a prior. Throttle is the fraction of pre-event throughput retained and
-            # the solver clips it to [0, 1], so 0.95 is the practical ceiling (1.0 is a no-op
-            # scenario). War risk is $/bbl charged at a full disruption and scaled by the lost share,
-            # so 2.5 is still a plausible insurance premium, not a free fudge factor. Both ranges are
-            # widened well past the previously chosen values because the last optimum sat on the old
-            # upper edge (0.85 / 1.0), which made the comparison against the earlier parameter set
-            # unfair: the fit was truncated, not converged.
-            for throttle in (0.45, 0.55, 0.65, 0.75, 0.85, 0.90, 0.95):
-                for war_risk in (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5):
-                    override = {**ab_override, "red_sea_throttle": throttle, "red_sea_war_risk_per_bbl": war_risk}
-                    scen_df, summary = run_scenario(
-                        {"suez": throttle, "babalmandab": throttle},
-                        scenario_id="calib_red_sea",
-                        params_override=override,
-                    )
-                    pred = _modeled(base_df, scen_df, summary)
-                    loss = (
-                        abs(pred["suez_pct"] - obs["suez_pct"]) / 100.0
-                        + abs(pred["cape_pct"] - obs["cape_pct"]) / 100.0
-                        + abs(pred["share"] - obs["share"])
-                    )
-                    if loss < best_loss:
-                        best_loss = float(loss)
-                        best_pred = pred
-                        best = {
-                            "alpha": alpha,
-                            "beta": beta,
-                            "red_sea_throttle": throttle,
-                            "red_sea_war_risk_per_bbl": war_risk,
-                        }
+            scen_df, summary = run_scenario(
+                {},
+                scenario_id="calib_red_sea",
+                params_override={**ab_override, **h1_params},
+            )
+            pred = _modeled(base_df, scen_df, summary)
+            loss = (
+                abs(pred["suez_pct"] - obs["suez_pct"]) / 100.0
+                + abs(pred["cape_pct"] - obs["cape_pct"]) / 100.0
+                + abs(pred["share"] - obs["share"])
+            )
+            print(
+                f"  alpha={alpha:.2f} beta={beta:.1f} -> Suez {pred['suez_pct']:+.1f}% "
+                f"Cape {pred['cape_pct']:+.1f}% share {pred['share']:.4f} | loss {loss:.4f}"
+            )
+            if loss < best_loss:
+                best_loss = float(loss)
+                best_pred = pred
+                best = {"alpha": alpha, "beta": beta}
 
     assert best is not None and best_pred is not None
-    throttle = best["red_sea_throttle"]
 
-    # Out-of-sample check on the held-out H2 window with the winning parameters
+    # Out-of-sample check on the held-out H2 window, with the H2 premium (a sourced input, so this
+    # stays a test of the routing response rather than of the premium).
     holdout_scen, holdout_summary = run_scenario(
-        {"suez": throttle, "babalmandab": throttle},
+        {},
         scenario_id="holdout_red_sea",
-        params_override=best,
+        params_override={**best, **h2_params},
     )
     holdout_base, _ = get_baseline(best)
     holdout_pred = _modeled(holdout_base, holdout_scen, holdout_summary)
@@ -142,12 +152,16 @@ def calibrate() -> dict:
         "daily_tanker_rate_low": 35000.0,
         "daily_tanker_rate_high": 75000.0,
         "avg_barrels_per_transit": 1000000.0,
-        "red_sea_throttle": throttle,
-        "red_sea_war_risk_per_bbl": best["red_sea_war_risk_per_bbl"],
-        "risk_passages": ["suez", "babalmandab"],
         "chokepoint_queue_days": 1.0,
         "max_util_for_delay": 5.0,
         "n_congestion_iters": 10,
+        # Baseline (pre-crisis) world: no listed area, so no premium.
+        "awrp_usd_per_bbl": 0.0,
+        "risk_passages": [],
+        # Sourced scenario inputs, recorded here so the config alone documents the crisis.
+        "awrp_red_sea_h1_usd_per_bbl": AWRP_RED_SEA_H1_USD_PER_BBL,
+        "awrp_red_sea_h2_usd_per_bbl": AWRP_RED_SEA_H2_USD_PER_BBL,
+        "red_sea_risk_passages": RED_SEA_RISK_PASSAGES,
         "calibration_window": "2023-12-01..2024-02-29 (Red Sea H1)",
         "holdout_window": "2024-03-01..2024-06-30 (Red Sea H2)",
         "calibration_loss": round(best_loss, 4),
@@ -161,6 +175,8 @@ def calibrate() -> dict:
         "meets_share_target": bool(share_error <= SHARE_TARGET_TOLERANCE),
         "holdout_suez_pct_modeled": round(holdout_pred["suez_pct"], 2),
         "holdout_suez_pct_observed": round(obs_holdout["suez_pct"], 2),
+        "holdout_cape_pct_modeled": round(holdout_pred["cape_pct"], 2),
+        "holdout_cape_pct_observed": round(obs_holdout["cape_pct"], 2),
         "holdout_observed_suez_share": round(obs_holdout["share"], 4),
         "holdout_modeled_suez_share": round(holdout_pred["share"], 4),
         "holdout_share_error_abs": round(holdout_share_error, 4),
