@@ -18,7 +18,10 @@ What it does
        - weekly_tanker_transits (sum of daily n_tanker in Friday-ending weeks)
        - capacity_tanker_tonnes (sum of daily capacity_tanker)
        - avg_vessel_size_tonnes (capacity_tanker / n_tanker carrying-capacity proxy)
-       - est_oil_volume_bbl (capacity_tanker * crude_share * 7.3)
+       - est_oil_volume_bbl (capacity_tanker * crude_share * 7.3): crude oil only, using the
+         per-chokepoint EIA crude / PortWatch tanker ratio from crude_share.csv. Where EIA
+         publishes no crude row the hand-set CHOKEPOINT_RULES value is used and should be read
+         as a declared assumption.
        - utilization (weekly_tanker_transits / capacity_proxy)
        - anomaly (seasonal z-score vs. same ISO week-of-year in 2019-2022 baseline)
        - source ('observed' where PortWatch series exists, 'modeled' otherwise)
@@ -73,7 +76,7 @@ BASELINE_START = "2019-01-01"
 BASELINE_END = "2023-10-31"       # Pre-Red Sea crisis cutoff for capacity_proxy
 SEASONAL_BASE_END = "2022-12-31"  # Full pre-crisis calendar years for week-of-year z-score
 CAPACITY_PERCENTILE = 0.95        # 95th percentile of weekly tanker transits
-DEFAULT_CRUDE_SHARE = 0.65        # Fallback when EIA ratio is unavailable
+DEFAULT_CRUDE_SHARE = 0.55        # Fallback when neither crude_share.csv nor CHOKEPOINT_RULES has a value
 
 # Mapping from searoute_passage in edges.csv -> substring in PortWatch portname
 PASSAGE_TO_PORTWATCH = {
@@ -111,7 +114,8 @@ CHOKEPOINT_RULES = {
         "max_dwt_tonnes": 160000,
         "toll_usd_per_transit": 50000.0,
         "toll_usd_per_bbl": 0.05,
-        "default_crude_share": 0.75,
+        # EIA Dardanelles 2022: crude 1.7 of 3.2 mbd total = 0.53
+        "default_crude_share": 0.53,
     },
     "malacca": {
         "vessel_size_limit": "Malaccamax (max ~20.5m draft, ~300k DWT VLCC)",

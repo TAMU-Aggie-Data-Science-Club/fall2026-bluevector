@@ -168,13 +168,16 @@ where lanes meet (e.g. Gulf of Aden) and hold no flow attributes of their own.
 | `connector_kind` | how a port connector was attached (`auto`, `manual`) |
 | `route_segments_json`, `geometry_geojson` | water-routed geometry for the map |
 
-**Dynamic fields**
+**Dynamic fields.** Every chokepoint number starts from `capacity_tanker`, which is not a deadweight
+ceiling: PortWatch defines it as *total trade volume in metric tons of all tankers transiting that
+day*, estimated as each vessel's payload share × its deadweight. The word "capacity" is the DWT
+basis, not the semantics.
 
 | Field | Derivation |
 |---|---|
 | `weekly_tanker_transits` | Σ daily `n_tanker` over a Friday-ending week |
 | `capacity_tanker_tonnes` (upstream) | Σ daily `capacity_tanker` |
-| `avg_vessel_size_tonnes` | `capacity_tanker_tonnes / n_tanker` — capacity per transit, not cargo |
+| `avg_vessel_size_tonnes` | `capacity_tanker_tonnes / n_tanker` — mean estimated cargo per transit; a floor on vessel size, not DWT |
 | `est_oil_volume` | `capacity_tanker × 7.3 × crude_share` |
 | `capacity_proxy` | 95th percentile of weekly tanker transits, 2019-01-01 → 2023-10-31 |
 | `utilization` | `weekly_tanker_transits / capacity_proxy`; may exceed 1 |
@@ -258,13 +261,18 @@ crude_share = EIA oil flow (mbd) / (mean daily capacity_tanker × 7.3 / 1e6)
 | Bab-el-Mandeb | 6.43 | 6.27 | 1.025 |
 | Cape of Good Hope | 7.18 | 6.35 | 1.131 |
 
-A share above 1 is impossible. The ratio failed for three reasons, all verifiable in the source
-definitions:
+A share above 1 is impossible for a cargo-to-cargo comparison, and `capacity_tanker` is a cargo
+estimate (PortWatch: "total trade volume (in metric tons) of all tankers transiting"; method =
+estimated payload share × deadweight). So the excess is a **method residual**, not a
+capacity-versus-cargo mismatch:
 
-1. EIA reports **oil carried**, including refined products; PortWatch `capacity_tanker` reports
-   **carrying capacity** of every tanker, laden or ballast, in both directions.
-2. At Suez, EIA includes the **SUMED pipeline**, which is not ship traffic.
-3. EIA editions mix annual and semi-annual figures.
+1. Ballast legs count as transits while contributing little or no estimated cargo, which pulls mean
+tonnage per transit down.
+2. EIA reports oil (crude + products); PortWatch reports **all** tanker liquids, a superset. Like for
+like, EIA should be the *smaller* number, so a ratio above 1 means the PortWatch estimate reads
+low — 2 % at Suez, 20 % at Hormuz.
+3. At Suez, EIA includes the **SUMED pipeline**, which is not ship traffic.
+4. EIA editions mix annual and semi-annual figures.
 
 **Second attempt — one global ratio.**
 
@@ -273,6 +281,48 @@ crude_share = Σ Comtrade crude barrels / (Σ PortWatch export tanker tons × 7.
             = 33.902 / 39.834
             = 0.8511
 ```
+
+The 0.8511 is not usable either: it loads **all** of each country's crude onto the selected
+ports, because `port_shares.csv` normalises shares to sum to 1 *within the selection*. Single
+countries expose it — India came out at 5.36× its own import tanker tonnage, the UAE at 1.54×,
+and Britain at 1.32×. A share above 1 for one country is impossible, so the defect is the
+normalisation, not the crude estimate.
+
+**Final (V1) — two universes, two shares.** The two numbers that were competing were never
+a measuring the same population.
+
+| Universe | Formula | Value |
+|---|---|---|
+| Chokepoint edges (`est_oil_volume`) | EIA **crude** mbd ÷ PortWatch tanker mbd, per chokepoint, mean 2020–22 | 0.48–0.93, median 0.73 |
+| OD matrix (`global_default`) | Comtrade crude reaching the 100 ports ÷ their tanker tonnage | **0.556** (V1 agreed at ≈0.53) |
+
+Port-side derivation, step by step:
+
+```
+w_c         = country c's tanker tons at the 100 selected ports / its tanker tons at all 1,955 ports
+crude_calls = Σ_c (crude exports_c + crude imports_c) × w_c          = 43.36 mbd
+base        = (selected export + import tanker tons) × 7.3           = 77.94 mbd
+share       = 43.36 / 77.94                                          = 0.5563
+```
+
+Both sides count a voyage twice (load and discharge), so the ratio is consistent. `w_c` is what
+keeps crude that loads at a port we did not select out of the numerator — the assumption the
+0.8511 version silently made and the 0.556 version does not. Coverage of world tanker tonnage is
+57.8 %, so a share of 0.556 says crude reaches these ports slightly more than proportionally.
+
+Why 0.70 must not be used here: crude makes roughly 1.3 chokepoint transits per tonne against
+0.5 for products, so chokepoint tonnage is about twice as crude-rich as port tonnage. Putting
+0.70 into the OD gives 27.3 mbd — 82 % of world crude on 58.7 % of world tanker tonnage. The
+0.70 family belongs only on the chokepoint edges.
+
+| Chokepoint | EIA crude 2022 (mbd) | EIA total 2022 (mbd) | crude ÷ PortWatch tonne, 2020–22 |
+|---|---|---|---|
+| Malacca | 16.3 | 23.0 | 0.73 |
+| Hormuz | 16.2 | 21.9 | 0.85 |
+| Suez | 3.6 | 7.3 | 0.48 |
+| Bab el-Mandeb | 4.0 | 8.0 | 0.50 |
+| Cape of Good Hope | 4.9 | 6.1 | 0.93 |
+| Panama (fiscal year) | 0.1 | 2.2 | 0.06 |
 
 This is used in the export/import targets and in `est_oil_volume`. It is a single documented number,
 adjustable in one place, instead of five contradictory ones.

@@ -12,14 +12,16 @@ Inputs (data/interim/):
     port_totals.csv     portid, export_tanker_bbl_yr, import_tanker_bbl_yr (Part 2)
                         Wide-format table written by od_port_shares.py.
     crude_share.csv     scope, crude_share, ...  (Part 3)
-                        Written by od_crude_share.py. The global_default row is used.
-                        NOTE: "crude share" here is really an OIL share of tanker
-                        throughput. EIA publishes total oil (crude + products), not
-                        crude-only, for 2020 onward. PortWatch capacity_tanker counts
-                        all liquid-bulk tankers in both directions (laden and ballast),
-                        so the ratio understates the true laden crude fraction. The
-                        per-chokepoint ratios all exceed 1.0 due to these mismatches
-                        and are not used; only the global Comtrade/PortWatch ratio is.
+                        Written by od_crude_share.py. Only the `global_default` row is
+                        used here, and it belongs to the PORT universe because the OD base
+                        is port tanker tonnage: Comtrade crude of the 100 ports' countries,
+                        each weighted by the share of its tanker tonnage inside the selected
+                        ports, over selected-port tanker tonnage. That is 0.556 on the current
+                        data; V1 was agreed at ~0.53, which is within 5 % of it.
+                        The per-chokepoint rows are the crude share of CHOKEPOINT tonnage and
+                        are deliberately NOT used here: crude crosses ~1.3 chokepoints per
+                        tonne against ~0.5 for products, so chokepoint tonnage is about twice
+                        as crude-rich and applying those ratios would inflate the OD by ~35 %.
                         If crude_share.csv is missing, falls back to CRUDE_SHARE_FALLBACK.
 
 Outputs (data/interim/, or data/interim/sample/ with --sample):
@@ -62,7 +64,7 @@ INTERIM = ROOT / "data" / "interim"
 SAMPLE_DIR = INTERIM / "sample"
 
 BARRELS_PER_TONNE = 7.3     # DELIVERABLE3 base assumption
-CRUDE_SHARE_FALLBACK = 0.6  # used only when crude_share.csv is not found
+CRUDE_SHARE_FALLBACK = 0.55  # used only when crude_share.csv is not found; V1 = 0.53
 TOLERANCE = 1e-6
 MAX_ITERATIONS = 1000
 SEED_FILL = 0.0             # off. Else a fraction of the mean seed cell, e.g. 1e-4 (see Method)
@@ -86,8 +88,8 @@ def load_crude_share():
         return CRUDE_SHARE_FALLBACK
     value = float(row["crude_share"].iloc[0])
     print(f"Loaded CRUDE_SHARE = {value:.4f} from {path.relative_to(ROOT)} (global_default). "
-          "NOTE: this is an oil share of tanker throughput, not a crude-only share — "
-          "see crude_share.csv notes and od_crude_share.py for details.")
+          "This is the port-universe crude share of PortWatch tanker tonnage "
+          "(see crude_share.csv notes and od_crude_share.py).")
     return value
 
 

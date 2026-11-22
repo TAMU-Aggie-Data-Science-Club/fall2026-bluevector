@@ -30,7 +30,22 @@ INTERIM_DIR = ROOT / "data" / "interim"
 PROCESSED_DIR = ROOT / "data" / "processed"
 
 BARRELS_PER_TONNE = 7.3
-DEFAULT_CRUDE_SHARE = 0.65
+CRUDE_SHARE_FALLBACK = 0.55
+
+
+def crude_share() -> float:
+    """Port-universe crude share from data/interim/crude_share.csv (global_default).
+
+    Used only to convert observed tanker tonnage into an oil volume column; the validation
+    metrics themselves are transit counts and do not depend on it.
+    """
+    path = INTERIM_DIR / "crude_share.csv"
+    if path.exists():
+        df = pd.read_csv(path)
+        row = df[df["scope"] == "global_default"]
+        if not row.empty:
+            return float(row["crude_share"].iloc[0])
+    return CRUDE_SHARE_FALLBACK
 
 EVENT_WINDOWS = [
     {
@@ -109,6 +124,7 @@ def build_validation_targets() -> pd.DataFrame:
     daily["n_tanker"] = pd.to_numeric(daily["n_tanker"], errors="coerce").fillna(0.0)
     daily["capacity_tanker"] = pd.to_numeric(daily.get("capacity_tanker", 0.0), errors="coerce").fillna(0.0)
 
+    share = crude_share()
     records = []
     for ev in EVENT_WINDOWS:
         pre_mask = daily["date"].between(pd.Timestamp(ev["pre_start"]), pd.Timestamp(ev["pre_end"]))
@@ -130,8 +146,8 @@ def build_validation_targets() -> pd.DataFrame:
             cri_weekly_tr = float(sub_cri["n_tanker"].mean() * 7.0)
             std_weekly_tr = max(float(sub_pre["n_tanker"].std() * np.sqrt(7.0)), 1.0)
 
-            pre_vol_bbl = float(sub_pre["capacity_tanker"].mean() * 7.0 * DEFAULT_CRUDE_SHARE * BARRELS_PER_TONNE)
-            cri_vol_bbl = float(sub_cri["capacity_tanker"].mean() * 7.0 * DEFAULT_CRUDE_SHARE * BARRELS_PER_TONNE)
+            pre_vol_bbl = float(sub_pre["capacity_tanker"].mean() * 7.0 * share * BARRELS_PER_TONNE)
+            cri_vol_bbl = float(sub_cri["capacity_tanker"].mean() * 7.0 * share * BARRELS_PER_TONNE)
 
             delta_tr = cri_weekly_tr - pre_weekly_tr
             pct_change_tr = (delta_tr / pre_weekly_tr * 100.0) if pre_weekly_tr > 0 else 0.0
