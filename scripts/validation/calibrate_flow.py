@@ -88,8 +88,15 @@ def calibrate() -> dict:
         for beta in (3.0, 4.0):
             ab_override = {"alpha": alpha, "beta": beta}
             base_df, _ = get_baseline(ab_override)
-            for throttle in (0.45, 0.55, 0.65, 0.75, 0.85):
-                for war_risk in (0.0, 0.25, 0.5, 0.75, 1.0):
+            # Grid bounds, not a prior. Throttle is the fraction of pre-event throughput retained and
+            # the solver clips it to [0, 1], so 0.95 is the practical ceiling (1.0 is a no-op
+            # scenario). War risk is $/bbl charged at a full disruption and scaled by the lost share,
+            # so 2.5 is still a plausible insurance premium, not a free fudge factor. Both ranges are
+            # widened well past the previously chosen values because the last optimum sat on the old
+            # upper edge (0.85 / 1.0), which made the comparison against the earlier parameter set
+            # unfair: the fit was truncated, not converged.
+            for throttle in (0.45, 0.55, 0.65, 0.75, 0.85, 0.90, 0.95):
+                for war_risk in (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5):
                     override = {**ab_override, "red_sea_throttle": throttle, "red_sea_war_risk_per_bbl": war_risk}
                     scen_df, summary = run_scenario(
                         {"suez": throttle, "babalmandab": throttle},

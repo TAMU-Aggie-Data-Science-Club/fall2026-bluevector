@@ -388,8 +388,8 @@ and it is the baseline the GNN must beat.
 | `alpha`, `beta` | 0.10, 3.0 | fitted on Red Sea H1 |
 | `daily_tanker_rate` | $50,000 (low $35k, high $75k) | charter band, used for cost per barrel |
 | `avg_barrels_per_transit` | 1,000,000 | fallback when an edge has no observed vessel size |
-| `red_sea_throttle` | 0.65 | fitted |
-| `red_sea_war_risk_per_bbl` | $0.25 | fitted; applied to Suez and Bab-el-Mandeb only |
+| `red_sea_throttle` | 0.85 | fitted |
+| `red_sea_war_risk_per_bbl` | $1.00 | fitted; applied to Suez and Bab-el-Mandeb only |
 | `chokepoint_queue_days` | 1.0 | queue and convoy base, not sailing time |
 | `max_util_for_delay` | 5.0 | caps the BPR curve |
 | `n_congestion_iters` | 10 | incremental loading passes |
@@ -498,8 +498,9 @@ never ranked against physical chokepoints.
 
 ### 5.1 Calibration design — Built
 
-Grid: α ∈ {0.10, 0.12, 0.15}, β ∈ {3, 4}, throttle ∈ {0.45, 0.55, 0.65, 0.75, 0.85},
-war risk ∈ {$0, $0.25, $0.50, $0.75, $1.00} = **150 solves**.
+Grid: α ∈ {0.10, 0.12, 0.15}, β ∈ {3, 4}, throttle ∈ {0.45, 0.55, 0.65, 0.75, 0.85, 0.90, 0.95},
+war risk ∈ {$0, $0.25, $0.50, $0.75, $1.00, $1.25, $1.50, $2.00, $2.50} = **378 solves**.
+Both ranges extend past the fitted values, so the optimum is interior rather than a grid corner.
 
 ```
 loss = |Suez%_model − Suez%_observed| / 100
@@ -511,13 +512,18 @@ Fitted on **Dec 2023–Feb 2024 only**. Mar–Jun 2024 is never used to choose a
 
 | | Model | Observed | Error |
 |---|---|---|---|
-| H1 Suez change | −35.56 % | −29.46 % | 6.10 pp |
-| H1 Cape change | +44.11 % | +68.85 % | 24.74 pp |
-| H1 Suez share | 0.5415 | 0.5412 | **0.0003** |
-| H2 Suez share (held out) | 0.5415 | 0.4167 | **0.1248** |
+| H1 Suez change | −28.40 % | −29.46 % | 1.06 pp |
+| H1 Cape change | +42.69 % | +68.85 % | 26.16 pp |
+| H1 Suez share | 0.5557 | 0.5412 | **0.0145** |
+| H2 Suez share (held out) | 0.5557 | 0.4167 | **0.1390** |
 
-Total loss 0.3087, dominated by the Cape term (0.247). The share target (< 0.05) is met on H1 and
+Total loss 0.2867, dominated by the Cape term (0.262). The share target (< 0.05) is met on H1 and
 missed on H2 because one fixed throttle cannot follow a crisis that deepened through the spring.
+
+The Cape term is the one the search cannot fix. Each Suez transit the model diverts produces about
+1.5 on the Cape (42.7 % against 28.4 %); the observation is 2.34 (68.8 % against 29.5 %). Raising
+the surcharge to $2.50/bbl buys Cape +57 % but drives Suez to −60 %, so the fit has no interior
+point that holds both.
 
 ### 5.2 Why validation compares shifts, not levels
 
@@ -534,9 +540,9 @@ Every metric below is about direction and relative size.
 
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pp) |
 |---|---|---|---|---|---|
-| Red Sea, Mar–Jun 2024 | 18.7 | 24.3 | 0.143 | 0.8 | 15.1 |
-| Ever Given peak week | 21.0 | 29.8 | 0.227 | 0.7 | 21.6 |
-| Panama drought | 17.5 | 23.5 | 0.273 | 0.6 | 35.6 |
+| Red Sea, Mar–Jun 2024 | 22.2 | 29.3 | 0.174 | 0.8 | 16.7 |
+| Ever Given peak week | 19.6 | 28.4 | 0.226 | 0.7 | 21.4 |
+| Panama drought | 16.1 | 22.9 | 0.126 | 0.5 | 14.9 |
 
 RMSE well above MAE in all three means the error sits in a few corridors, not everywhere.
 `validation_event_details.csv` names them.
@@ -713,7 +719,7 @@ Only three events can be checked against data; everything else is a what-if and 
 
 | Event | Date | Mechanism | Modelled as | Observed | Model |
 |---|---|---|---|---|---|
-| Red Sea / Houthi diversions | Dec 2023 – 2024 | war-risk rerouting | Suez + Bab-el-Mandeb 0.65 | Suez −37.5 % full window (H1 −29.5 %, H2 −43.5 %); Cape +69 % then +123 %; share 0.725 → 0.541 | Suez −35.6 %; share 0.5415 |
+| Red Sea / Houthi diversions | Dec 2023 – 2024 | war-risk rerouting | Suez + Bab-el-Mandeb 0.85 | Suez −37.5 % full window (H1 −29.5 %, H2 −43.5 %); Cape +69 % then +123 %; share 0.725 → 0.541 | Suez −28.4 %; share 0.5557 |
 | Ever Given | 23–29 Mar 2021 | channel blocked | Suez 1/7 | Suez −76 % in the peak week | −86 % |
 | Panama drought | 2023 – 2024 | draft and slot limits | Panama 24/36 = 0.67 | canal −26 %; slots 36 → 24/day | −30 %; almost no Cape response |
 
@@ -761,7 +767,7 @@ representation → demand → physics → evidence → learning → money → pr
 | A5 OD matrix | Who sends crude to whom? | port total → share → seed → IPF | 5,380 pairs, 12.11 G bbl/yr, gap < 1e-6 | `data/interim/od_matrix.csv` |
 | A6 Crude share | Why 0.8511? | before/after table with the >1 ratios | Malacca 1.044, Hormuz 1.202 → 0.8511 | `data/interim/crude_share.csv` |
 | A7 Flow model | How does a closure propagate? | 6-step solve diagram, cost equation | 232,164,410 bbl/wk; 0 stranded | `FLOW_MODEL.md` |
-| A8 Validation | How wrong is it? | H1/H2 split, event scorecard, corridor check | share error 0.0003; H2 0.125; extra days 0.85 | `validation_report.csv` |
+| A8 Validation | How wrong is it? | H1/H2 split, event scorecard, corridor check | share error 0.0145; H2 0.139; extra days 0.85 | `validation_report.csv` |
 
 ### 11.2 Flowchart B — "Learning → money → product"
 

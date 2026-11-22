@@ -160,7 +160,7 @@ about −30 %).
 
 Four parameters are fitted: the congestion curve `alpha` and `beta`, the Red Sea throughput
 retained, and the war-risk surcharge per barrel. The search is a grid (alpha 0.10–0.15, beta 3–4,
-throttle 0.45–0.85, surcharge $0–1/bbl) minimizing:
+throttle 0.45–0.95, surcharge $0–2.50/bbl) minimizing:
 
 ```
 loss = |suez_pct_model - suez_pct_observed| / 100
@@ -172,13 +172,20 @@ loss = |suez_pct_model - suez_pct_observed| / 100
 only. March–June 2024 (H2) is never used to choose anything, so scoring it is a real out-of-sample
 test rather than a fitted number dressed up as validation.
 
-Fitted values: alpha 0.10, beta 3.0, Red Sea throttle 0.65, war-risk $0.25/bbl. On H1 that gives a
-Suez share of 0.5415 against 0.5412 observed (error 0.0003, inside the 5 % target). On held-out H2
-the same parameters give 0.5415 against 0.4167 observed, an error of 0.125.
+Fitted values: alpha 0.10, beta 3.0, Red Sea throttle 0.85, war-risk $1.00/bbl. On H1 that gives a
+Suez share of 0.5557 against 0.5412 observed (error 0.0145, inside the 5 % target). On held-out H2
+the same parameters give 0.5557 against 0.4167 observed, an error of 0.139.
 
-The war-risk surcharge deserves a caveat: the grid allowed up to $1/bbl and the fit chose a low
-value. Transit counts alone identify it weakly, because a surcharge and a throughput cut both push
-traffic the same way.
+The upper ends of both ranges are open, not corners of the fit. Widening the grid to throttle 0.95
+and $2.50/bbl leaves the optimum at 0.85 / $1.00: the next points along either axis score worse
+(throttle 0.90 → 0.305, $1.50 → 0.314, $2.00 → 0.319).
+
+The war-risk surcharge is identifiable only jointly with the throughput cut. The loss surface is a
+staircase — for example throttle 0.85 / $0.50, 0.90 / $1.00 and 0.95 / $1.50 all land on the same
+routing (−27.1 % Suez, +42.7 % Cape, share 0.560) — because the throughput ceiling stops binding
+once the surcharge has already diverted more traffic than the ceiling would have. Above ~$2.50/bbl
+the Cape response keeps rising while Suez overshoots, so the fit cannot buy a larger diversion with
+a larger premium.
 
 ## 8. What is validated, and how
 
@@ -193,9 +200,9 @@ Scored events are held out from calibration: Red Sea H2, the Ever Given peak wee
 
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pct points) |
 |---|---|---|---|---|---|
-| Red Sea H2 | 18.7 | 24.3 | 0.143 | 0.8 | 15.1 |
-| Ever Given peak | 21.0 | 29.8 | 0.227 | 0.7 | 21.6 |
-| Panama drought | 17.5 | 23.5 | 0.273 | 0.6 | 35.6 |
+| Red Sea H2 | 22.2 | 29.3 | 0.174 | 0.8 | 16.7 |
+| Ever Given peak | 19.6 | 28.4 | 0.226 | 0.7 | 21.4 |
+| Panama drought | 16.1 | 22.9 | 0.126 | 0.5 | 14.9 |
 
 RMSE sits well above MAE in all three, which says the error is concentrated in a few corridors
 rather than spread evenly. The per-corridor detail in
