@@ -162,7 +162,6 @@ where lanes meet (e.g. Gulf of Aden) and hold no flow attributes of their own.
 | `length_nm` | searoute distance at 13 kn |
 | `from_snap_nm`, `to_snap_nm` | distance from the node to the snapped route endpoint |
 | `min_transit_days` | `length_nm / (14 × 24)` — fastest documented speed |
-| `vessel_size_limit`, `max_dwt_tonnes` | Suezmax / Neopanamax / Malaccamax / Turkish Straits rules |
 | `toll_usd_per_transit`, `toll_usd_per_bbl` | published tariffs; per-bbl = per-transit ÷ barrels per ship |
 | `speed_knot`, `typical_transit_days` | reference values behind the length |
 | `connector_kind` | how a port connector was attached (`auto`, `manual`) |

@@ -8,8 +8,6 @@ What it does
     3. Matches chokepoint edges to PortWatch's chokepoints database to fill
        chokepoint_portid.
     4. Adds static domain attributes to edges.csv:
-       - vessel_size_limit (Suezmax, Neopanamax, Turkish Straits, Malaccamax, or unrestricted)
-       - max_dwt_tonnes (approximate maximum deadweight tonnage for laden tankers)
        - toll_usd_per_transit and toll_usd_per_bbl (published canal tariffs for Suez & Panama)
        - capacity_proxy (95th percentile of weekly tanker transits in the pre-Red Sea
          baseline window: 2019-01-01 to 2023-10-31)
@@ -96,72 +94,52 @@ PASSAGE_TO_PORTWATCH = {
 # Tolls are approximate published laden-tanker tariffs (USD per transit and USD per barrel)
 CHOKEPOINT_RULES = {
     "suez": {
-        "vessel_size_limit": "Suezmax (max ~20.1m draft, ~200k DWT laden; VLCCs must ballast or lighten)",
-        "max_dwt_tonnes": 200000,
         "toll_usd_per_transit": 450000.0,
         "toll_usd_per_bbl": 0.45,
         "default_crude_share": 0.62,
     },
     "panama": {
-        "vessel_size_limit": "Neopanamax (max 366m LOA, 51.25m beam, ~120k DWT)",
-        "max_dwt_tonnes": 120000,
         "toll_usd_per_transit": 350000.0,
         "toll_usd_per_bbl": 0.60,
         "default_crude_share": 0.45,
     },
     "bosporus": {
-        "vessel_size_limit": "Turkish Straits max ~300m LOA (Suezmax ~160k DWT limit)",
-        "max_dwt_tonnes": 160000,
         "toll_usd_per_transit": 50000.0,
         "toll_usd_per_bbl": 0.05,
         # EIA Dardanelles 2022: crude 1.7 of 3.2 mbd total = 0.53
         "default_crude_share": 0.53,
     },
     "malacca": {
-        "vessel_size_limit": "Malaccamax (max ~20.5m draft, ~300k DWT VLCC)",
-        "max_dwt_tonnes": 300000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.70,
     },
     "ormuz": {
-        "vessel_size_limit": "Unrestricted (ULCC/VLCC capable)",
-        "max_dwt_tonnes": 500000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.75,
     },
     "babalmandab": {
-        "vessel_size_limit": "Unrestricted (VLCC capable)",
-        "max_dwt_tonnes": 400000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.65,
     },
     "gibraltar": {
-        "vessel_size_limit": "Unrestricted (ULCC/VLCC capable)",
-        "max_dwt_tonnes": 500000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.65,
     },
     "south_africa": {
-        "vessel_size_limit": "Unrestricted (ULCC/VLCC capable)",
-        "max_dwt_tonnes": 500000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.70,
     },
     "sunda": {
-        "vessel_size_limit": "Sunda shelf draft limit (~18m draft, ~150k DWT)",
-        "max_dwt_tonnes": 150000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.60,
     },
     "chili": {
-        "vessel_size_limit": "Pilotage & weather constraints (~150k DWT typical)",
-        "max_dwt_tonnes": 150000,
         "toll_usd_per_transit": 0.0,
         "toll_usd_per_bbl": 0.0,
         "default_crude_share": 0.55,
@@ -482,24 +460,18 @@ def main() -> None:
         if (pd.isna(row["chokepoint_portid"]) or str(row["chokepoint_portid"]).strip() == "") and pas in passage_map:
             edges.at[idx, "chokepoint_portid"] = passage_map[pas][0]
 
-    # 4. Add static domain attributes (vessel_size_limit, max_dwt_tonnes, tolls)
-    vessel_limits, max_dwts, tolls_transit, tolls_bbl = [], [], [], []
+    # 4. Add static domain attributes (tolls)
+    tolls_transit, tolls_bbl = [], []
     for _, row in edges.iterrows():
         if row["edge_type"] == "chokepoint":
             pas = str(row.get("searoute_passage", "")).strip().lower()
             rule = CHOKEPOINT_RULES.get(pas, {})
-            vessel_limits.append(rule.get("vessel_size_limit", "Unrestricted"))
-            max_dwts.append(rule.get("max_dwt_tonnes", 500000))
             tolls_transit.append(rule.get("toll_usd_per_transit", 0.0))
             tolls_bbl.append(rule.get("toll_usd_per_bbl", 0.0))
         else:
-            vessel_limits.append("Unrestricted")
-            max_dwts.append(500000)
             tolls_transit.append(0.0)
             tolls_bbl.append(0.0)
 
-    edges["vessel_size_limit"] = vessel_limits
-    edges["max_dwt_tonnes"] = max_dwts
     edges["toll_usd_per_transit"] = tolls_transit
     edges["toll_usd_per_bbl"] = tolls_bbl
 
