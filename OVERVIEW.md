@@ -405,9 +405,10 @@ and it is the baseline the GNN must beat.
    transits        = barrels_per_week / barrels_per_ship
    utilization     = transits / capacity_weekly
    delay_days      = service_days × α × min(utilization, 5)^β
+                   + 10 × max(0, utilization − 1)      # queue above capacity
    cost_per_barrel = (free_flow_days + delay_days) × daily_rate / barrels_per_ship
                    + toll_usd_per_bbl
-                   + war_risk × (1 − throttle)
+                   + awrp_per_bbl                      # flat, listed areas only
    ```
    `service_days` is 1 queue day at a chokepoint and the sailing time on open water. Pricing
    congestion against a 400 nm lane's own 1.3-day sailing time would make the penalty negligible.
@@ -543,8 +544,8 @@ Every metric below is about direction and relative size.
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pp) |
 |---|---|---|---|---|---|
 | Red Sea, Mar–Jun 2024 | 32.5 | 41.1 | 0.207 | 0.6 | 19.3 |
-| Ever Given peak week | 20.3 | 28.8 | 0.195 | 0.7 | 20.4 |
-| Panama drought | 16.1 | 22.9 | 0.126 | 0.5 | 14.9 |
+| Ever Given peak week | 18.2 | 26.2 | 0.186 | 0.7 | 18.9 |
+| Panama drought | 17.2 | 23.2 | 0.142 | 0.5 | 16.2 |
 
 RMSE well above MAE in all three means the error sits in a few corridors, not everywhere.
 `validation_event_details.csv` names them.

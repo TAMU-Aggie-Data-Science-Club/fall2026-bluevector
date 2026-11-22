@@ -155,6 +155,8 @@ def calibrate() -> dict:
         "chokepoint_queue_days": 1.0,
         "max_util_for_delay": 5.0,
         "n_congestion_iters": 10,
+        # Let utilisation exceed 1.0: the ceiling is a price (queue) instead of a hard wall.
+        "allow_over_capacity": True,
         # Baseline (pre-crisis) world: no listed area, so no premium.
         "awrp_usd_per_bbl": 0.0,
         "risk_passages": [],

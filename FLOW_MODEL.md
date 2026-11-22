@@ -54,9 +54,10 @@ free_flow_days  = length_nm / (speed_knots * 24)
 transits        = barrels_per_week / barrels_per_ship
 utilization     = transits / capacity_weekly
 delay_days      = service_days * alpha * min(utilization, 5) ** beta
+                + 10 * max(0, utilization - 1)      # queue above capacity
 cost_per_barrel = (free_flow_days + delay_days) * daily_tanker_rate / barrels_per_ship
                 + toll_usd_per_bbl
-                + war_risk_per_bbl * (1 - throttle)
+                + awrp_per_bbl                      # flat, listed areas only
 ```
 
 `service_days` is the time a ship nominally spends being served at that edge: one day at a
@@ -206,8 +207,8 @@ Scored events are held out from calibration: Red Sea H2, the Ever Given peak wee
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pct points) |
 |---|---|---|---|---|---|
 | Red Sea H2 | 32.5 | 41.1 | 0.207 | 0.6 | 19.3 |
-| Ever Given peak | 20.3 | 28.8 | 0.195 | 0.7 | 20.4 |
-| Panama drought | 16.1 | 22.9 | 0.126 | 0.5 | 14.9 |
+| Ever Given peak | 18.2 | 26.2 | 0.186 | 0.7 | 18.9 |
+| Panama drought | 17.2 | 23.2 | 0.142 | 0.5 | 16.2 |
 
 RMSE sits well above MAE in all three, which says the error is concentrated in a few corridors
 rather than spread evenly. The per-corridor detail in

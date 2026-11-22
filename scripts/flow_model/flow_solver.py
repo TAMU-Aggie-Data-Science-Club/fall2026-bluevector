@@ -157,6 +157,12 @@ def solve_network(
     over_cap_days = float(params.get("over_capacity_delay_days_per_unit", 10.0))
     awrp = float(params.get("awrp_usd_per_bbl", 0.0))
     risk_passages = {str(p).strip().lower() for p in params.get("risk_passages", [])}
+    # When true, a throttled edge is not cut out of the graph at its ceiling: it keeps accepting
+    # traffic and the linear over-capacity queue prices the excess. Utilisation is then allowed to
+    # rise above 1.0, so the congestion curve and the queue slope become the constraint instead of
+    # a hard wall. A closed edge (capacity 0) is still removed -- no finite wait prices a passage
+    # that is not there.
+    allow_over_capacity = bool(params.get("allow_over_capacity", False))
 
     # Build lookup from portwatch_portid -> graph node_id (e.g. 'port1091' -> 'port_port1091')
     node_lookup = {}
@@ -352,12 +358,16 @@ def solve_network(
                 if G.has_edge(v, u):
                     G[v][u]["weight"] = cost_bbl
 
-        # A throttled edge that has reached its throughput ceiling is taken out of the graph for the
-        # remaining increments, so the surplus reroutes (or strands) instead of queueing for free.
-        # Unthrottled lanes and chokepoints keep the soft BPR curve only, because their capacity
-        # proxy is statistical rather than a physical wall (see DELIVERABLE4 'Known risks').
+        # A throttled edge that has reached its throughput ceiling is normally taken out of the graph
+        # for the remaining increments, so the surplus reroutes (or strands) instead of queueing for
+        # free. With allow_over_capacity the ceiling becomes a price rather than a wall: the edge keeps
+        # accepting traffic and the over-capacity queue charges for it. Unthrottled lanes and
+        # chokepoints already keep the soft BPR curve only, because their capacity proxy is
+        # statistical rather than a physical wall (see DELIVERABLE4 'Known risks').
         for e_id, m in edge_meta.items():
             if m["closed"] or m["removed"] or m["throughput_factor"] >= 1.0:
+                continue
+            if allow_over_capacity:
                 continue
             cap = m["capacity_weekly"]
             transits_so_far = edge_flows_bbl[e_id] / m["bbl_per_ship"]
