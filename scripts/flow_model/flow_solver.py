@@ -122,6 +122,7 @@ def solve_network(
     save_output: bool = True,
     return_od: bool = False,
     baseline_transits: dict[str, float] | None = None,
+    capacity_override: dict[str, float] | None = None,
 ):
     """Route weekly OD crude oil demand over the network with capacities & BPR delays.
 
@@ -144,6 +145,8 @@ def solve_network(
     n_iters = int(params.get("n_congestion_iters", 5))
     queue_days = float(params.get("chokepoint_queue_days", 1.0))
     max_util = float(params.get("max_util_for_delay", 5.0))
+    # C: waiting time charged per unit of demand above capacity (days). See the delay formula.
+    over_cap_days = float(params.get("over_capacity_delay_days_per_unit", 10.0))
     war_risk = float(params.get("red_sea_war_risk_per_bbl", 0.0))
     risk_passages = {str(p).strip().lower() for p in params.get("risk_passages", [])}
 
@@ -192,7 +195,11 @@ def solve_network(
             bbl_per_ship = default_bbl_per_ship
 
         # Weekly capacity on the Deliverable 3 statistical basis (unconstrained for lanes/connectors)
-        if pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
+        # A: capacity can be re-based to the traffic this network actually carries (see
+        # scenario_engine._network_capacity_override). capacity_proxy is all-tanker throughput.
+        if capacity_override and e_id in capacity_override:
+            base_cap_weekly = float(capacity_override[e_id])
+        elif pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
             base_cap_weekly = float(e["capacity_proxy"])
         else:
             base_cap_weekly = 5000.0
@@ -304,6 +311,11 @@ def solve_network(
             util = transits_so_far / cap if cap > 0 else 0.0
 
             delay = m["service_days"] * alpha * (min(util, max_util) ** beta)
+            # C: over-capacity queueing. The BPR term is a fraction of one service day, so an edge
+            # far above its capacity would otherwise absorb traffic for free -- which is how crude
+            # ended up routed through Sunda at 147 % of capacity while Malacca sat at 11 %. Demand
+            # above capacity has no steady-state queue, so charge a linear wait on the excess.
+            delay += over_cap_days * max(0.0, util - 1.0)
             m["delay_days"] = delay
             voyage_cost_bbl = ((m["free_flow_days"] + delay) * daily_rate) / m["bbl_per_ship"]
 

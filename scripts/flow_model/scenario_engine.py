@@ -39,6 +39,8 @@ EVER_GIVEN_THROUGHPUT = 1.0 / 7.0
 PANAMA_THROUGHPUT = 24.0 / 36.0
 
 _BASE_CACHE: dict = {}
+# A: per-parameter-set capacity re-basing (see _network_capacity_override).
+_CAPACITY_OVERRIDES: dict = {}
 
 # Only these parameters change the baseline solve; throttles and risk surcharges do not.
 _BASELINE_PARAM_KEYS = (
@@ -65,6 +67,28 @@ def _cache_key(params_override: dict | None):
     )
 
 
+def _network_capacity_override(raw: pd.DataFrame) -> dict[str, float]:
+    """Scale each edge's capacity to the traffic this network actually carries.
+
+    `capacity_proxy` is the all-tanker throughput at a chokepoint, but the OD carries only
+    crude between the 100 selected ports -- roughly 60-90 % of observed transits at the big
+    corridors and over 100 % at the ones the model over-uses. Leaving capacity at the world
+    value put utilization at 0.1-0.4 where observation says 0.7-0.9, so congestion never bit.
+
+    Scaling capacity by modelled/observed baseline transits re-bases utilization to the
+    observed level and keeps the congestion response proportional to the flow we route.
+    The ratio is capped at 1.0: an edge the model over-uses keeps its world capacity and is
+    disciplined by the over-capacity queue instead, rather than being given a bigger pipe.
+    """
+    edges = pd.read_csv(CONFIG_DIR / "edges.csv").set_index("edge_id")
+    observed = pd.to_numeric(edges.get("weekly_tanker_transits"), errors="coerce").reindex(raw["edge_id"])
+    proxy = pd.to_numeric(edges.get("capacity_proxy"), errors="coerce").reindex(raw["edge_id"])
+    modelled = pd.Series(pd.to_numeric(raw["tanker_transits"], errors="coerce").to_numpy(), index=raw["edge_id"])
+    share = (modelled / observed).where(observed > 0).clip(upper=1.0)
+    scaled = (proxy * share).dropna()
+    return {str(k): float(v) for k, v in scaled.items()}
+
+
 def get_baseline(params_override: dict | None = None):
     """Return (baseline_edge_flows, baseline_od_table) for the given parameter set."""
     key = _cache_key(params_override)
@@ -72,18 +96,23 @@ def get_baseline(params_override: dict | None = None):
         return _BASE_CACHE[key]
 
     cache_path = PROCESSED_DIR / "baseline_edge_flows.parquet"
-    if key is None and cache_path.exists():
-        base_df = pd.read_parquet(cache_path)
-        _, base_od = solve_network({}, "baseline", save_output=False, return_od=True)
-    else:
-        raw, base_od = solve_network(
-            {}, "baseline", params_override=params_override, save_output=False, return_od=True
-        )
-        base_df = compute_edge_metrics(raw, baseline_df=raw, scenario_id="baseline", save_output=False)
-        if key is None:
-            PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-            base_df.to_parquet(cache_path, index=False)
-            base_df.to_csv(PROCESSED_DIR / "baseline_edge_flows.csv", index=False)
+    # A is a two-pass solve: route once to learn how much traffic this network actually puts on
+    # each edge, re-base capacity to that share, then route again. The cached table is no longer
+    # read, because its utilization was computed against world capacity.
+    raw, _ = solve_network(
+        {}, "baseline", params_override=params_override, save_output=False, return_od=True
+    )
+    override = _network_capacity_override(raw)
+    _CAPACITY_OVERRIDES[key] = override
+    raw, base_od = solve_network(
+        {}, "baseline", params_override=params_override, save_output=False, return_od=True,
+        capacity_override=override,
+    )
+    base_df = compute_edge_metrics(raw, baseline_df=raw, scenario_id="baseline", save_output=False)
+    if key is None:
+        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+        base_df.to_parquet(cache_path, index=False)
+        base_df.to_csv(PROCESSED_DIR / "baseline_edge_flows.csv", index=False)
 
     _BASE_CACHE[key] = (base_df, base_od)
     return _BASE_CACHE[key]
@@ -155,6 +184,7 @@ def run_scenario(
         save_output=False,
         return_od=True,
         baseline_transits=base_tr,
+        capacity_override=_CAPACITY_OVERRIDES.get(_cache_key(params_override)),
     )
     edge_flows = compute_edge_metrics(raw, baseline_df=base_df, scenario_id=scenario_id, save_output=save_files)
     stats = _od_summary(od, base_od)
