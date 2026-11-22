@@ -142,6 +142,13 @@ def solve_network(
     beta = float(params["beta"])
     daily_rate = float(params["daily_tanker_rate"])
     default_bbl_per_ship = float(params["avg_barrels_per_transit"])
+    # Parcel size must come from an observed quantity. est_oil_volume is crude-only while
+    # weekly_tanker_transits counts every tanker, so their ratio is not a parcel size: once the
+    # numerator became crude-only that ratio fell below the clip floor at 8 of 10 chokepoints,
+    # flattening every corridor onto the same 250k bbl vessel and leaving routing to pick on
+    # distance alone. PortWatch's observed average vessel size per chokepoint, at crude density,
+    # keeps the real dispersion between corridors.
+    bbl_per_tonne_crude = 7.33
     n_iters = int(params.get("n_congestion_iters", 5))
     queue_days = float(params.get("chokepoint_queue_days", 1.0))
     max_util = float(params.get("max_util_for_delay", 5.0))
@@ -183,8 +190,11 @@ def solve_network(
         length_nm = float(e["length_nm"])
         free_flow_days = length_nm / (speed_knots * 24.0)
 
-        # Calibrated barrels per tanker transit on this edge
-        if (
+        # Barrels per tanker transit on this edge. Observed vessel size wins where PortWatch
+        # reports one; the volume/transit ratio stays as a fallback for rows without it.
+        if pd.notna(e.get("avg_vessel_size_tonnes")) and float(e.get("avg_vessel_size_tonnes", 0)) > 0:
+            bbl_per_ship = float(e["avg_vessel_size_tonnes"]) * bbl_per_tonne_crude
+        elif (
             pd.notna(e.get("est_oil_volume"))
             and pd.notna(e.get("weekly_tanker_transits"))
             and float(e.get("weekly_tanker_transits", 0)) > 0
