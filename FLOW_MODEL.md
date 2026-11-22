@@ -262,9 +262,9 @@ Read these as the model's honest boundaries.
   source. At Suez under Ever Given it carries 10.4 of the 11.3 delay days, which is why `alpha` and
   `beta` barely move the answer. A real queue diverges as utilisation approaches 1; a straight line
   does not.
-- **Capacity is statistical.** The proxy comes from historical percentiles, which is why only
-  throttled edges get a hard ceiling. A real canal also has a physical draft limit that the graph
-  represents only through the observed vessel sizes.
+- **Capacity is statistical.** The proxy comes from historical percentiles, so capacity binds only
+  through the queue price, never as a physical wall. A real canal also has a draft limit that the
+  graph represents only through the observed vessel sizes.
 - **Demand is static.** No price elasticity, no substitution between origins, no newbuilding
   response. Every scenario reroutes a fixed weekly demand.
 - **Port congestion is not modeled.** Ports are endpoints with no queue of their own.
@@ -278,7 +278,7 @@ python scripts/validation/validation_targets.py    # observed targets, incl. H1/
 python scripts/validation/calibrate_flow.py        # writes config/flow_params.json
 python scripts/flow_model/flow_solver.py           # baseline raw flows
 python scripts/flow_model/edge_metrics.py          # baseline contract table
-python scripts/flow_model/scenario_engine.py       # three events + criticality ranking
+python scripts/flow_model/scenario_engine.py       # four events + criticality ranking
 python scripts/flow_model/gnn_sim_generator.py     # 337 training scenarios (--workers N)
 python scripts/validation/validate_events.py       # scorecard
 python scripts/validation/validate_gfw_delays.py   # voyage-time check
