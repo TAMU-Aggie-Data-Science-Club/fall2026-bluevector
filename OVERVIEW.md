@@ -192,7 +192,7 @@ capacity_proxy     = P95(weekly_tanker_transits)                  # 2019-01-01..
 utilization        = weekly_tanker_transits / capacity_proxy
 est_oil_volume     = capacity_tanker_tonnes × 7.3 × crude_share
 anomaly            = (x − mean_same_week(x, 2019..2022)) / std_same_week(x, 2019..2022)
-toll_usd_per_bbl   = toll_usd_per_transit / barrels_per_ship
+toll_usd_per_bbl   = toll_usd_per_transit / cost_barrels_per_cargo   # 1,000,000 bbl Suezmax
 ```
 
 ### 2.4 Connector rule — Built
@@ -657,7 +657,7 @@ edge_cost_per_bbl(r)  = edge_days × r / barrels_per_ship + toll_per_bbl
 
 At r = $35k / $50k / $75k per day. The three values are a freight uncertainty band, not a forecast.
 The war-risk premium is not in this formula yet: the flow model charges it as a separate
-`awrp_per_bbl`, so a Red Sea scenario's freight cost and its total route cost differ by $0.50–$1.00.
+`awrp_per_bbl`, so a Red Sea scenario's freight cost and its total route cost differ by $0.41–$0.83.
 Fleet cost is barrel-weighted across edges; scenario values are changes against baseline.
 
 ### 7.2 Three indices, one function

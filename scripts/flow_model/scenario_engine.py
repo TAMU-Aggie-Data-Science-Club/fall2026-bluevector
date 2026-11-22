@@ -41,11 +41,12 @@ PANAMA_THROUGHPUT = 24.0 / 36.0
 # Red Sea war-risk premium, sourced rather than fitted. Insurers quote an additional war-risk
 # premium (AWRP) as a percentage of hull value per transit through a JWC-listed area: Lloyd's List
 # (5 Jan 2024) reports 0.3-0.35 %, Lloyd's List (17 Jan 2024) and Reuters (16 Jan 2024) report ~1 %,
-# and OECD/ITF (Mar 2024) summarises the same range. Converted on a Suezmax basis -- $100M hull,
-# 1M bbl cargo -- that is $0.30-0.35/bbl in early January and $1.00/bbl from mid-January.
+# and OECD/ITF (Mar 2024) summarises the same range. Converted on the same Suezmax the model prices
+# everywhere -- $82.8M hull, 1,000,000 bbl cargo (cost_barrels_per_cargo) -- 0.5 % is $414k, or
+# $0.41/bbl, and 1 % is $828k, or $0.83/bbl.
 # H1 (Dec 2023 - Feb 2024) averages 0.5 %, H2 (Mar - Jun 2024) sits at the ~1 % peak.
-AWRP_RED_SEA_H1_USD_PER_BBL = 0.50
-AWRP_RED_SEA_H2_USD_PER_BBL = 1.00
+AWRP_RED_SEA_H1_USD_PER_BBL = 0.41
+AWRP_RED_SEA_H2_USD_PER_BBL = 0.83
 # One insurance bill per transit, not per chokepoint: charge at the southern gate of the listed area
 # (Bab-el-Mandeb) and not again at Suez.
 RED_SEA_RISK_PASSAGES = ["babalmandab"]
@@ -61,6 +62,7 @@ _BASELINE_PARAM_KEYS = (
     "beta",
     "daily_tanker_rate",
     "avg_barrels_per_transit",
+    "cost_barrels_per_cargo",
     "chokepoint_queue_days",
     "max_util_for_delay",
     "n_congestion_iters",

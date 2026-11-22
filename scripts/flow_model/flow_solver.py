@@ -49,6 +49,11 @@ DEFAULT_PARAMS = {
     "beta": 3.0,
     "daily_tanker_rate": 50000.0,
     "avg_barrels_per_transit": 1000000.0,
+    # Cargo used to turn per-transit dollars (toll, war-risk premium, a day's charter) into $/bbl.
+    # A different question from avg_barrels_per_transit: that one is observed cargo per transit and
+    # decides how many ships an edge carries; this one is the crude carrier the model prices. Set to
+    # 0 to price on the observed cargo per transit, which is the behaviour before this split.
+    "cost_barrels_per_cargo": 1000000.0,
     # No throughput cut by default: the Red Sea canal stayed open through 2024, so the diversion was
     # a price response. A throughput cut is reserved for closures that were physical (Ever Given,
     # Panama slots).
@@ -67,6 +72,7 @@ _PARAM_KEYS_FOR_BASELINE = (
     "beta",
     "daily_tanker_rate",
     "avg_barrels_per_transit",
+    "cost_barrels_per_cargo",
     "chokepoint_queue_days",
     "max_util_for_delay",
     "n_congestion_iters",
@@ -143,6 +149,13 @@ def solve_network(
     beta = float(params["beta"])
     daily_rate = float(params["daily_tanker_rate"])
     default_bbl_per_ship = float(params["avg_barrels_per_transit"])
+    # Dollars per barrel are converted on the crude carrier this model prices, not on the all-tanker
+    # average above. The tariffs and the war-risk quote are written per ship, so charging a Suezmax
+    # tariff divided by a 347k bbl all-tanker average cargo put a 2.9x-larger ship's toll on a small
+    # one -- at Suez, a $0.45/bbl toll against $0.15/bbl of sailing. Transits keep the observed cargo
+    # per transit, so counting ships stays an observation and only the dollar conversion is priced.
+    _cost_cargo = float(params.get("cost_barrels_per_cargo", default_bbl_per_ship) or 0.0)
+    cost_cargo_bbl = _cost_cargo if _cost_cargo > 0 else None
     # Parcel size must come from an observed quantity. est_oil_volume is crude-only while
     # weekly_tanker_transits counts every tanker, so their ratio is not a parcel size: once the
     # numerator became crude-only that ratio fell below the clip floor at 8 of 10 chokepoints,
@@ -229,7 +242,17 @@ def solve_network(
                 break
         through_frac = float(np.clip(through_frac, 0.0, 1.0))
 
-        toll_bbl = float(e["toll_usd_per_bbl"]) if pd.notna(e.get("toll_usd_per_bbl")) else 0.0
+        # The per-barrel toll is derived from the per-transit tariff on the same cost cargo, so the
+        # two stored columns cannot disagree (Panama held $350,000/transit against $0.60/bbl, which
+        # implies 583k bbl).
+        edge_cost_cargo = cost_cargo_bbl or bbl_per_ship
+        toll_transit = pd.to_numeric(e.get("toll_usd_per_transit"), errors="coerce")
+        if pd.notna(toll_transit):
+            toll_bbl = float(toll_transit) / edge_cost_cargo
+        elif pd.notna(e.get("toll_usd_per_bbl")):
+            toll_bbl = float(e["toll_usd_per_bbl"])
+        else:
+            toll_bbl = 0.0
 
         edge_meta[e_id] = {
             "edge_id": e_id,
@@ -245,6 +268,7 @@ def solve_network(
             "closed": through_frac <= 0.0,
             "toll_per_bbl": toll_bbl,
             "bbl_per_ship": bbl_per_ship,
+            "bbl_per_ship_cost": cost_cargo_bbl or bbl_per_ship,
             # BPR congestion acts on the nominal queue/convoy time at a chokepoint, not on the
             # length of a 300-500 nm edge segment (which would make waiting almost free).
             "service_days": queue_days if e_type == "chokepoint" else free_flow_days,
@@ -334,7 +358,7 @@ def solve_network(
             # above capacity has no steady-state queue, so charge a linear wait on the excess.
             delay += over_cap_days * max(0.0, util - 1.0)
             m["delay_days"] = delay
-            voyage_cost_bbl = ((m["free_flow_days"] + delay) * daily_rate) / m["bbl_per_ship"]
+            voyage_cost_bbl = ((m["free_flow_days"] + delay) * daily_rate) / m["bbl_per_ship_cost"]
 
             # A listed war-risk area adds a flat insurance premium per transit. It is not scaled by the
             # lost throughput share: insurers quote a percentage of hull value per transit whether or
@@ -432,7 +456,7 @@ def solve_network(
             util = transits / cap if cap > 0 else 0.0
             delay_days = m["delay_days"]
 
-        voyage_cost_bbl = ((m["free_flow_days"] + delay_days) * daily_rate) / m["bbl_per_ship"]
+        voyage_cost_bbl = ((m["free_flow_days"] + delay_days) * daily_rate) / m["bbl_per_ship_cost"]
         risk_penalty = m["risk_per_bbl"]
         cost_per_bbl = voyage_cost_bbl + m["toll_per_bbl"] + risk_penalty
 

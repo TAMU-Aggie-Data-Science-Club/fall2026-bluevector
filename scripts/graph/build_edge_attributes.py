@@ -94,18 +94,18 @@ PASSAGE_TO_PORTWATCH = {
 # Tolls are approximate published laden-tanker tariffs (USD per transit and USD per barrel)
 CHOKEPOINT_RULES = {
     "suez": {
-        "toll_usd_per_transit": 450000.0,
-        "toll_usd_per_bbl": 0.45,
+        "toll_usd_per_transit": 415100.0,
+        "toll_usd_per_bbl": 0.4151,
         "default_crude_share": 0.62,
     },
     "panama": {
-        "toll_usd_per_transit": 350000.0,
-        "toll_usd_per_bbl": 0.60,
+        "toll_usd_per_transit": 511250.0,
+        "toll_usd_per_bbl": 0.51125,
         "default_crude_share": 0.45,
     },
     "bosporus": {
-        "toll_usd_per_transit": 50000.0,
-        "toll_usd_per_bbl": 0.05,
+        "toll_usd_per_transit": 58600.0,
+        "toll_usd_per_bbl": 0.0586,
         # EIA Dardanelles 2022: crude 1.7 of 3.2 mbd total = 0.53
         "default_crude_share": 0.53,
     },
