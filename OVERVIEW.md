@@ -384,14 +384,12 @@ and it is the baseline the GNN must beat.
 | Parameter | Value | Why |
 |---|---|---|
 | `speed_knots` | 13.0 | fleet average; 14 kn is the fastest documented |
-| `alpha`, `beta` | 0.10, 3.0 | fitted on Red Sea H1 |
-| `daily_tanker_rate` | $50,000 (low $35k, high $75k) | charter band, used for cost per barrel |
+| `alpha`, `beta` | 0.15, 4.0 | DELIVERABLE4 defaults, not fitted |
+| `daily_tanker_rate` | $45,800 (low $35k, high $75k) | 2024 Q1 Suezmax TCE, used for cost per barrel |
 | `avg_barrels_per_transit` | 1,000,000 | fallback when an edge has no observed vessel size |
 | `awrp_usd_per_bbl` | 0 in the baseline | sourced war-risk premium, set per scenario; charged once per listed-area transit |
-| `awrp_red_sea_h1/h2_usd_per_bbl` | $0.50 / $1.00 | sourced: AWRP 0.5–1.0 % of hull value per transit, converted on a Suezmax basis |
-| `chokepoint_queue_days` | 1.0 | queue and convoy base, not sailing time |
+| `awrp_red_sea_h1/h2_usd_per_bbl` | $0.41 / $0.83 | sourced: AWRP 0.5–1.0 % of hull value per transit, converted on a Suezmax basis |
 | `max_util_for_delay` | 5.0 | caps the BPR curve |
-| `allow_over_capacity` | true | a throttle raises cost above capacity instead of deleting the edge; only `throttle = 0` closes one |
 | `n_congestion_iters` | 10 | incremental loading passes |
 
 ### 4.3 One solve, in order
@@ -404,23 +402,21 @@ and it is the baseline the GNN must beat.
    free_flow_days  = length_nm / (13 × 24)
    transits        = barrels_per_week / barrels_per_ship
    utilization     = transits / capacity_weekly
-   delay_days      = service_days × α × min(utilization, 5)^β
-                   + 10 × max(0, utilization − 1)      # queue above capacity
+   delay_days      = free_flow_days × α × min(utilization, 5)^β
    cost_per_barrel = (free_flow_days + delay_days) × daily_rate / barrels_per_ship
                    + toll_usd_per_bbl
                    + awrp_per_bbl                      # flat, listed areas only
    ```
-   `service_days` is 1 queue day at a chokepoint and the sailing time on open water. Pricing
-   congestion against a 400 nm lane's own 1.3-day sailing time would make the penalty negligible.
+   `free_flow_days` is the edge's own sailing time; α 0.15 and β 4.0 are the curve's published
+   defaults, and at observed utilisation the term is a rounding error.
 4. **Route.** Dijkstra, one single-source run per origin port
    (`networkx.single_source_dijkstra`), weights non-negative. One pass moves **1/10** of every OD
    pair, then costs are recomputed from the flows so far — incremental loading, the standard
    Frank-Wolfe-style approximation of user equilibrium.
-5. **Queue above capacity.** A throttle lowers `capacity_weekly`; it does not delete the edge.
-   Traffic above capacity keeps moving and pays the queue term, 10 days per unit of excess
-   utilisation. Only a closed edge (`throttle = 0`) is removed, which is what lets Hormuz strand
-   21 % of crude. Unthrottled lanes keep only the soft BPR curve, because their capacity proxy is a
-   historical percentile, not a physical wall.
+5. **A throttle is a wall.** A throttle lowers `capacity_weekly` to that fraction of the baseline
+   transits; once flow reaches the ceiling the edge leaves the graph and the surplus reroutes or
+   strands. Only a closed edge (`throttle = 0`) strands crude outright, which is what lets Hormuz
+   strand 21 % of crude.
 6. **Record.** Demand with no path is `stranded`.
 
 There is no min-cost-flow solve: capacity acts through loading and the queue price, so the result is
@@ -511,9 +507,8 @@ never ranked against physical chokepoints.
 Grid: α ∈ {0.10, 0.12, 0.15}, β ∈ {3, 4} = **6 solves**. The Red Sea throughput cut is gone
 (Suez stayed open) and the war-risk premium is sourced, so nothing about the crisis is fitted. All
 six points produce identical Red Sea results — the congestion curve is not identified at these
-utilisations, and the model is determined entirely by its inputs. Under Ever Given the grid moves the
-Suez drop from −70.8 % to −71.6 %, because the over-capacity queue carries 10.4 of the 11.3 delay
-days.
+utilisations, and the model is determined entirely by its inputs. Under Ever Given the grid is not identified either, because a throttled edge is removed at its
+ceiling and the curve never carries the delay.
 
 ```
 loss = |Suez%_model − Suez%_observed| / 100
@@ -536,8 +531,9 @@ below their peak.
 
 The Cape is what no input fixes. About 0.5 Cape transits move per Suez transit lost (+37.7 % against
 −30.9 %); the observation is 2.34 (68.8 % against 29.5 %). More premium drives Suez past the
-observation without buying the Cape response, which points at the corridor's absorption — its
-re-based capacity of 16.8 transits/week against a 548k-bbl parcel.
+observation without buying the Cape response. The Cape is not absorption-limited: at an observed
+capacity of 100 transits/week it carries the same 3.1M bbl as at 7.4. It is simply not on the cheapest
+path for the flows the OD contains.
 
 ### 5.2 Why validation compares shifts, not levels
 
@@ -583,7 +579,7 @@ unrelated lanes.
   +123.2 % in H2).
 - Ever Given overshoots the Cape (+79 % modelled vs +5.7 % observed) because the throttle lasts a
   full week while the canal reopened after six days, and the model has no time dimension.
-- The over-capacity queue is a straight line, so delay above capacity is priced, not derived.
+- A throttled edge is removed at its ceiling, so the model cannot show queueing at an open chokepoint.
 - Panama sends almost nothing to the Cape, where reality added 51 %.
 
 ---
@@ -758,8 +754,9 @@ model's check that a true single point of failure behaves like one.
    redeployed more capacity than a cost-minimising router does.
 3. **Ever Given overshoots the Cape** — +79 % modelled against +5.7 % observed — because the throttle
    lasts a full week against a six-day blockage and the model has no time dimension.
-4. **The over-capacity queue is a straight line.** Ten days per unit of excess utilisation is an
-   assumption with no source; a real queue diverges as utilisation approaches 1.
+4. **Congestion is inert.** At the observed `capacity_proxy`, utilisation is 0.33 at Suez, so α and β
+   cannot move a route. The curve is in the model because DELIVERABLE4 requires it, not because it
+   decides anything.
 5. **Lane closures are a graph-resolution artifact** — a natural detour would cut through a port,
    which the port rule forbids — so lanes are ranked separately.
 5. **Capacity is statistical.** Only throttled edges get a hard ceiling; a real canal also has a

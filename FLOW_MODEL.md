@@ -53,17 +53,16 @@ not on distance, because a short congested canal can be worse than a long quiet 
 free_flow_days  = length_nm / (speed_knots * 24)
 transits        = barrels_per_week / barrels_per_ship
 utilization     = transits / capacity_weekly
-delay_days      = service_days * alpha * min(utilization, 5) ** beta
-                + 10 * max(0, utilization - 1)      # queue above capacity
+delay_days      = free_flow_days * alpha * min(utilization, 5) ** beta
 cost_per_barrel = (free_flow_days + delay_days) * daily_tanker_rate / cost_barrels_per_cargo
                 + toll_usd_per_bbl
                 + awrp_per_bbl                      # flat, listed areas only
 ```
 
-`service_days` is the time a ship nominally spends being served at that edge: one day at a
-chokepoint (queue and convoy), and the sailing time itself on open water. The chokepoint base is the
-queue time, not the length of the segment, because a 400 nm lane has a 1.3 day base: congestion
-priced against sailing time is nearly free, and routes then never avoid a busy corridor.
+That is DELIVERABLE4's formula with nothing added. `alpha` 0.15 and `beta` 4.0 are the curve's
+published defaults, not fitted. `capacity_weekly` is PortWatch's `capacity_proxy` on every edge — the
+95th percentile of that corridor's weekly tanker transits, 2019–2023 — used as observed, and never
+rescaled to the model's own output.
 
 `barrels_per_ship` is taken from Deliverable 3 where the chokepoint has an observed vessel size
 (estimated oil volume divided by weekly tanker transits, clipped to 250k–2.2M barrels), and one
@@ -84,13 +83,12 @@ Capacity is not enforced inside the optimization; there is no min-cost-flow solv
 this loading procedure and through arc removal in step 4, so the result is an approximate
 equilibrium, not the exact optimum of a capacitated flow problem.
 
-**Step 4 — charge for excess instead of refusing it.** A throttle lowers an edge's capacity; it does
-not delete the edge. Traffic above capacity keeps moving and pays the queue term, ten days per unit
-of excess utilisation, so a throttled canal is expensive rather than impossible. Only a closed edge
-(`throttle = 0`, capacity 0) leaves the graph, which is what makes Hormuz strand 21 % of crude.
-Unthrottled lanes use only the soft congestion curve, because their capacity proxy is a 95–99th
-percentile of historical transits, not a physical wall; ships really do surge past it, as the Cape
-did in 2024.
+**Step 4 — a throttle is a wall, not a price.** A throttle lowers an edge's capacity to that fraction
+of the transits it carried at baseline. Once flow on it reaches the ceiling it leaves the graph for
+the remaining passes, so the surplus reroutes or strands rather than queueing for free. Only a closed
+edge (`throttle = 0`) strands traffic outright, which is what makes Hormuz strand 21 % of crude. The
+BPR term is the only congestion price, and at observed utilisation (0.33 at Suez, 0.06 at the Cape)
+it is small: congestion is not what decides a route in this network.
 
 Removing a throttled edge at 98 % of its capacity — what the model used to do — made utilisation a
 dead column: nothing could pass 1.0, so `alpha` and `beta` changed no output under any scenario. With
@@ -157,10 +155,10 @@ Results against the baseline:
 
 | Scenario | Suez transits | Suez/(Suez+Cape) share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 61.6 | 0.9153 | 0 |
-| Red Sea H1 | 21.3 | 0.5273 | 0 |
-| Red Sea H2 | 10.0 | 0.3108 | 0 |
-| Ever Given 2021 | 25.5 | 0.6048 | 0 |
+| baseline | 61.5 | 0.9153 | 0 |
+| Red Sea H1 | 20.7 | 0.5155 | 0 |
+| Red Sea H2 | 9.3 | 0.2894 | 0 |
+| Ever Given 2021 | 14.1 | 0.3735 | 0 |
 | Panama drought 2023 | 61.6 | 0.9153 | 0 |
 
 Only a full closure strands anything: a throttle prices the excess instead of refusing it. The Panama
@@ -179,15 +177,17 @@ observed all-tanker average puts a Suezmax toll on a ship a third its size. At S
 toll against $0.15/bbl of sailing on the same edge. Converted consistently, the tariff is ten times
 the sailing cost of the passage it applies to.
 
-Tolls come from the published schedules: the SCA ladder at SCNT 78,500 under the schedule in force
-from 15 January 2024 ($415,100 laden), the ACP tariff at PC/UMS 65,000 ($511,250), and Turkish
-Straits dues at 50,000 NT one way ($58,600). The premium is 0.5 % of hull value for H1 and 1 % for H2,
-which is $0.41 and $0.83 per barrel on the same divisor. Sources, and the values still unconfirmed,
-are in [`DATA.md`](DATA.md).
+Tolls are the tariff **in force in each window**, not one figure for all history, at SCNT 78,500 and
+PC/UMS 65,000, one way: Suez $444,200 for 2023 (the 1 Jan 2023 schedule plus the 25 % laden tanker
+surcharge that has applied since 1 April 2023) and $510,700 from 15 January 2024; Panama $384,500 in
+2023 ($300,000 fixed plus $1.30 per PC/UMS ton) and $446,250 in 2024; Bosporus $42,914 one way at
+gold-franc $4.42 and 50,000 NT. The Ever Given window uses the 2020 Suez schedule, $305,000 laden,
+with no surcharge. The premium is 0.5 % of hull value for H1 and 1 % for H2, which is $0.41 and $0.83
+per barrel on the same divisor. Sources, and the values still unconfirmed, are in
+[`DATA.md`](DATA.md).
 
-**Nothing is fitted to the transit counts.** `alpha`/`beta` are searched over a small grid
-(0.10–0.15 × 3–4) and every point gives the same Red Sea answer, because the over-capacity queue
-carries the delay. No Red Sea throttle is used: Suez stayed open, so the diversion is a price
+**Nothing is fitted to the transit counts.** `alpha`/`beta` are the curve's published defaults and no
+grid is searched. No Red Sea throttle is used: Suez stayed open, so the diversion is a price
 response, and treating it as a capacity loss would replay the observation inside the constraint.
 
 What the model then does against observation, on definitions that can be recomputed from
@@ -196,8 +196,8 @@ What the model then does against observation, on definitions that can be recompu
 | Window | Model share | Observed share | Error |
 |---|---|---|---|
 | Baseline (to Oct 2023) | 0.9153 | 0.6279 | +0.287 |
-| Red Sea H1 | 0.5273 | 0.5604 | −0.033 |
-| Red Sea H2 (held out) | 0.3108 | 0.4175 | −0.107 |
+| Red Sea H1 | 0.5155 | 0.5604 | −0.045 |
+| Red Sea H2 (held out) | 0.2894 | 0.4175 | −0.128 |
 
 ### Why the share is a sensitivity, not a validation
 
@@ -226,8 +226,21 @@ output.
 **The largest error is the baseline, and the metric that exposes it is crude volume**, which nothing
 checked before. The model routes the right volume through Suez (21.3M bbl/wk against 21.6M observed)
 and far too little around the Cape (3.1M against 39.7M), so 0.87 of its Suez-plus-Cape barrels go
-through Suez against 0.35 observed. That gap is the lane graph and the OD matrix, not a cost
-parameter, and no price fixes it.
+through Suez against 0.35 observed.
+
+Capacity is not the cause, and neither is a fitted constant. With every edge at its observed capacity
+the baseline delay is a rounding error — 0.02 days at Suez, 0.000 at the Cape, at utilisation 0.33
+and 0.06 — so the congestion curve barely participates. What sets the split is route cost: the Suez
+passage costs $0.491/bbl, of which $0.444 is the toll, against about $0.43/bbl of charter for the
+9.3-day Cape detour. An all-or-nothing shortest path hands the entire split to that margin, which is
+why the baseline share is the largest error in the model.
+
+The observation it is scored against is not the same quantity. PortWatch counts every tanker,
+including ballast, and reports deadweight capacity; the model counts laden crude between 100 ports.
+That is why utilisation sits at 0.33 on Suez while the observed corridor runs near 1.0, and why the
+Cape's 39.7M bbl/wk cannot be set against 3.1M of routed cargo without separating ballast from laden
+and Suezmax parcels from VLCCs. Closing that gap is a vessel-class question, not a price question: a
+laden VLCC cannot transit Suez at all.
 
 ## 8. What is validated, and how
 
