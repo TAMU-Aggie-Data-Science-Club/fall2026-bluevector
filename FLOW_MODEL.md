@@ -103,22 +103,27 @@ means 65 % of the edge's pre-event crude still passes. Capacity follows from tha
 
 ```
 capacity_weekly = throttle * baseline_transits(edge)          when throttle < 1
-capacity_weekly = capacity_proxy                              when open
-throttle_factor = capacity_weekly / capacity_proxy            (reported, 0..1)
+capacity_weekly = capacity_proxy * crude_share                when open
+throttle_factor = capacity_weekly / (capacity_proxy * crude_share)   (reported, 0..1)
 ```
 
-Capacity is built from measured crude throughput rather than from `capacity_proxy`, because the
-proxy counts **all tankers** (187 transit slots per week at Suez) while the modeled **crude** flow is
-only about 32 transits per week. A throttle applied to the proxy leaves a ceiling far above the
-crude that actually uses the edge, so the cut does not bind: halving the proxy still leaves 93 slots
-against 32 transits of demand.
+Open capacity is PortWatch's proxy on the crude share of that corridor's own tanker volume: 187.5
+tanker slots per week at Suez, of which crude is 0.49, so 91 crude transits. Capacity and flow are
+both crude, and capacity stays an observation — nothing in it is derived from what the model routes.
+(It used to be re-based by the model's own first-pass output, which made utilisation identically
+`observed ÷ proxy` and moved whenever the solver changed.)
+
+A throttle is applied to measured crude throughput rather than to that capacity, because the proxy
+counts **all tankers** while the pulled crude flow is about 32 transits per week. A throttle applied
+to the proxy leaves a ceiling far above the crude that actually uses the edge, so the cut does not
+bind: halving 91 still leaves 45 slots against 32 transits of demand.
 
 The reported `throttle_factor` is converted back onto the Deliverable 3 basis so the column keeps
-the units the shared contract defines. At Suez, a throttle of 0.85 leaves 0.85 × 32.3 ≈ 27.4
-transits per week, which is reported as `throttle_factor` ≈ 0.15 of the 187.5 proxy.
+the units the shared contract defines. At Suez, a throttle of 0.85 leaves 0.85 × 32.5 ≈ 27.6 crude
+transits per week, reported as `throttle_factor` ≈ 0.30 of the 91 crude-transit capacity.
 
-Edges that carried no crude at baseline fall back to `throttle * capacity_proxy`, so a throttled but
-unused edge is never reported as closed while still carrying flow.
+Edges that carried no crude at baseline fall back to `throttle * capacity_weekly`, so a throttled
+but unused edge is never reported as closed while still carrying flow.
 
 ## 5. Per-edge outputs
 

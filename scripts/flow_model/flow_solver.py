@@ -123,7 +123,6 @@ def solve_network(
     save_output: bool = True,
     return_od: bool = False,
     baseline_transits: dict[str, float] | None = None,
-    capacity_override: dict[str, float] | None = None,
 ):
     """Route weekly OD crude oil demand over the network with capacities & BPR delays.
 
@@ -205,13 +204,22 @@ def solve_network(
         else:
             bbl_per_ship = default_bbl_per_ship
 
-        # Weekly capacity on the Deliverable 3 statistical basis (unconstrained for lanes/connectors)
-        # A: capacity can be re-based to the traffic this network actually carries (see
-        # scenario_engine._network_capacity_override). capacity_proxy is all-tanker throughput.
-        if capacity_override and e_id in capacity_override:
-            base_cap_weekly = float(capacity_override[e_id])
-        elif pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
-            base_cap_weekly = float(e["capacity_proxy"])
+        # Weekly capacity on the same basis as the flow. PortWatch's capacity_proxy is the 95th
+        # percentile of weekly *tanker* transits, and crude is only part of that (0.49 at Suez), so
+        # the corridor's own crude share of tanker volume converts the proxy to crude transits. The
+        # capacity stays an observation: nothing here is derived from what the model routes.
+        crude_share = 1.0
+        if (
+            pd.notna(e.get("est_oil_volume"))
+            and pd.notna(e.get("weekly_tanker_transits"))
+            and pd.notna(e.get("avg_vessel_size_tonnes"))
+            and float(e.get("weekly_tanker_transits", 0)) > 0
+        ):
+            tanker_bbl = float(e["weekly_tanker_transits"]) * float(e["avg_vessel_size_tonnes"]) * 7.33
+            if tanker_bbl > 0:
+                crude_share = float(np.clip(float(e["est_oil_volume"]) / tanker_bbl, 0.0, 1.0))
+        if pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
+            base_cap_weekly = float(e["capacity_proxy"]) * crude_share
         else:
             base_cap_weekly = 5000.0
 
