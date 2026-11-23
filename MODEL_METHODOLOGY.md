@@ -8,6 +8,8 @@ This document explains the executed implementation. Older assignment documents a
 notes contain examples from earlier data vintages. Current scorecards support the numbers here.
 No model was retrained or changed to write this guide.
 
+> **Subsequent audit, 2026-11-22:** [section 15](#15-methodology-audit-and-hormuz-readiness) records a material Hormuz surrogate failure and price-feature limitation. The historical scores below remain valid descriptive results, but they do not certify readiness to use all three models as reliable crisis simulators.
+
 ## Contents
 
 1. [Results in plain English](#1-results-in-plain-english)
@@ -24,6 +26,7 @@ No model was retrained or changed to write this guide.
 12. [What can be concluded](#12-what-can-be-concluded)
 13. [Reproduction and source files](#13-reproduction-and-source-files)
 14. [Glossary](#14-glossary)
+15. [Methodology audit and Hormuz readiness](#15-methodology-audit-and-hormuz-readiness)
 
 ## 1. Results in plain English
 
@@ -1032,3 +1035,169 @@ implementation errors; they do not eliminate the scientific limitations above.
 | Stranded demand | Modeled cargo with no available route |
 | Throughput | Quantity moving through a passage per time period |
 | Validation | Data used to select checkpoints/settings before testing |
+
+
+## 15. Methodology audit and Hormuz readiness
+
+**Audit date: November 22, 2026. Decision: useful research test, but not ready to claim effective,
+physically reliable closure results from all three model families.** No architecture, coefficients,
+training data or published benchmark scorecards were changed by this audit. Checks against the
+previous run-provenance hashes found no changes in its recorded input/output files.
+
+### 15.1 What was checked and what passed
+
+The audit checked the routing, scenario, GNN training/evaluation, cost/index, price and validation
+implementations against the Markdown descriptions and saved outputs. It also inspected the existing
+dashboard and source ingestion behavior. It did not independently re-verify every tariff, license,
+team-permission claim, or historical dataset-vetting statement in the source register. Those dated
+checks and unresolved `TBD` fields must retain their qualifications.
+
+Verified properties include the stated graph size, current OD total, unit conversions, current
+metric tables, chronological GNN splits, forecast lagging, residual-interval method, and cost
+aggregation formulas. The raw downloaded chokepoint table contains **zero duplicate port-days and
+zero missing tanker counts**. The tracked graph-check artifact has **32 PASS and one WARN**, not
+33 unconditional passes. These checks establish implementation properties, not universal accuracy.
+
+The weekly attribute builder generally accepts five or more observations and fills missing numeric
+counts upstream. The temporal trainer and observed price-share path explicitly require seven-day
+weeks. Thus seven-day completeness is a property of those modeling paths and this checked input,
+not a guarantee that every upstream table has seven valid days.
+
+### 15.2 Material methodology findings
+
+| Finding | Evidence | Implication |
+|---|---|---|
+| Scenario-surrogate cargo feasibility fails on Hormuz | Zero masked Hormuz flow coexists with nearly unchanged predicted connector shipments | Do not use its stranded-demand or downstream flow outputs as physically valid closure results. |
+| Closure zeros are enforced | `gnn_model.py` masks closed-edge volume/transits | Getting zero at Hormuz is an implementation constraint, not evidence the network learned the crisis. |
+| Single-edge Hormuz closure is already seen | `sim_E003_th_000` is in all three saved pretraining sets | Running this input again is a stress/regression test, not unseen-scenario validation. |
+| Price scenario lacks direct supply-shock variables | Current scenario regression uses lagged-price anchors and Suez-share features | Its small Hormuz sensitivity does not measure a market supply premium. Optional GNN-summary forecasting can contain indirect traffic information, but still does not identify causality. |
+| Current scenario intervals include the 2026 crisis | Calibration spans 2025-11-21–2026-11-13 | Reusing these bands for a supposedly untouched 2026 test contaminates that assessment. |
+| Flow settings/demand are inherited, static inputs | Existing OD/capacity/cargo parameters are reused | The full-closure result is conditional on this modeled network, not a 2026 world-supply forecast. |
+| Physical bypass and market responses are missing | No scenario-dependent pipeline export reallocation, inventories, production substitution or demand response | A persistent real crisis cannot be represented solely by closing the sea edge. |
+| Independent historical validation is overstated in older notes | Parameter-retention discussion considered H2/Ever Given results; the GFW-named checker has no GFW voyage observations | Treat historical comparisons as retrospective. The grid's H1 objective alone does not establish that all later research decisions ignored test results. |
+
+Additional qualifications: the primary cargo proxy is estimated carrying-capacity tonnes × 7.33,
+not observed loaded crude or full vessel-dimension enforcement. Throttled edges are removed between
+loading passes, so a pass can overshoot the requested ceiling. The current baseline Panama
+utilization is **3.2666** with **5.8731 modeled delay days**; that exposes assumptions, not an
+observed real queue.
+
+The corridor-delay checker constructs an undirected route graph without the main solver's
+split-port restriction. It can therefore use paths the solver forbids. It is a published-benchmark
+geometry diagnostic, not independent ship-level or assigned-OD voyage-delay validation. Earlier
+corridor values were not freshly reproduced in this audit.
+
+The EIA chokepoint ingestion script checks a web page but returns its embedded reference tables;
+`--refresh` does not turn those constants into newly scraped 2026 observations. Use the adopted
+PortWatch counts and EIA Brent series for a new crisis test, with their actual vintages.
+
+### 15.3 Full-closure smoke test: what the existing models actually produce
+
+The isolated probe called the existing scenario engine with `ormuz` retained throughput of
+1.0, 0.75, 0.50, 0.25 and 0.0. It reconstructed the existing simulator GNN inputs and averaged
+seeds 7/19/43. The price column applies the current scenario regression's own Suez-share mapping.
+These are diagnostic outputs, **not a scored historical 2026 backtest**.
+
+| Retained fraction | Flow stranded, million bbl/week | Flow stranded, % of modeled demand | Flow Hormuz transits/week | GNN Hormuz transits/week | GNN connector-residual stranded, million bbl/week | Conditional Brent change vs open |
+|---|---:|---:|---:|---:|---:|---:|
+| 1.00 | 0.000 | 0.00% | 87.170 | 86.475 | 0.204 | $0.000 |
+| 0.75 | 6.149 | 4.25% | 69.736 | 66.224 | 0.278 | +$0.010 |
+| 0.50 | 15.373 | 10.61% | 43.585 | 65.104 | 0.283 | +$0.028 |
+| 0.25 | 21.522 | 14.86% | 26.151 | 64.037 | 0.288 | +$0.043 |
+| 0.00 | 30.746 | 21.23% | 0.000 | 0.000 | 0.293 | +$0.070 |
+
+The flow denominator is **144.827 million bbl/week of selected-network demand**. Full closure's
+30.746 million bbl/week equals about **4.39 million bbl/day** within this network; 21.23% must
+not be called a percentage of world oil supply. No sea alternative is represented for the Gulf
+origins behind Hormuz; the model's fixed origin allocation strands their shipments.
+
+At full closure the GNN still predicts approximately **144.533 million bbl/week of served connector
+shipments**, almost the full 144.827 million demand, versus the flow model's roughly 114.081 million
+served barrels. Its 0.293 million stranded residual is only about **0.20%** of network demand.
+This is a severe failed feasibility test, including a case used in pretraining. At partial closure
+its Hormuz predictions also respond too weakly. It is more informative than a global average
+surrogate error dominated by unchanged or lightly affected edges.
+
+The +$0.070 regression sensitivity is merely an indirect Suez-share association. It is **not a
+credible estimate of the price impact** of removing a major export passage. A small number with
+a wide residual interval is not evidence that the actual supply shock has little price effect.
+
+Raw probe outputs remain ignored under `data/processed/hormuz_audit_smoke.csv` and
+`hormuz_audit_smoke_flows.parquet`. No headline benchmark results were overwritten.
+
+### 15.4 What is known about the 2026 event and local coverage
+
+The UN's September 2026 assessment dates the conflict's onset to **February 28, 2026** and describes
+severe Hormuz traffic restrictions, partial recovery and renewed disruption. It does not describe
+one uniform zero-traffic state throughout the year. See the [UN September assessment, Box 1](https://desapublications.un.org/file/22656/download).
+
+The IEA's [September 18 commentary](https://www.iea.org/commentaries/oil-markets-strain-to-plug-the-gap-left-by-middle-east-supply-shortfall)
+describes bypass exports, inventories, non-Gulf output and demand adjustments. These responses
+are absent from the static sea-routing model. The [EIA September outlook](https://www.eia.gov/outlooks/steo/archives/Sep26.pdf)
+also treats export restrictions, production shut-ins and alternative routes separately. Those
+reports supply event context here; they have not been adopted as new model-input datasets.
+
+Local inputs already extend far enough for a retrospective study:
+
+- Complete seven-day PortWatch modeling weeks: **2019-01-11–2026-11-13**.
+- EIA weekly Brent table: **2019-01-04–2026-11-20**. Its last week does not create a matching
+  PortWatch week; a joint evaluation must use the common complete observations.
+
+Illustrative descriptions of the local Hormuz tanker series, **not validation metrics**, are:
+
+| Observation bin | Full weeks | Mean tanker transits/week |
+|---|---:|---:|
+| January–February 2026, through February 27 | 9 | 257.33 |
+| March–May 2026 | 13 | 15.38 |
+| June–July 2026 | 9 | 34.44 |
+| August–November 13, 2026 | 15 | 8.40 |
+
+All-tanker counts are different from the all-ship counts and oil-volume estimates in external
+reports. AIS coverage and later revisions also require caution; these are not exact crude exports.
+
+### 15.5 A defensible next test, with decisions still to confirm
+
+Two experiments should be reported separately:
+
+1. **Conditional stress test:** fixed modeled demand under open/partial/full Hormuz restrictions.
+   Report served/stranded barrels, affected origins, network routing/costs and feasibility failures.
+   Label the absence of pipeline reallocations. Treat full closure as an endpoint scenario rather
+   than equating it with every week of the observed crisis.
+2. **Historical forecasting test:** freeze all training, normalization, checkpoint selection and
+   price-interval calibration before the chosen crisis boundary. Test traffic and prices on common
+   later observation weeks using only permitted lagged inputs. Compare persistence/seasonal traffic
+   and random-walk/AR(1) prices, and report onset, partial recovery and sustained restriction
+   separately. Do not derive a week's scenario throttle from that same week's target traffic and
+   then claim an independent forecast of it.
+
+A reasonable **proposed**, not yet adopted, boundary is February 28, with the first full affected
+Friday-ending week March 6 and current joint endpoint November 13. A pre-event price fit/calibration
+split must reserve only earlier observations; the existing current-vintage 52-week scenario
+calibration cannot be reused. Existing pre-2023 temporal GNN checkpoints and the frozen historical
+price benchmark can be assessed as frozen old models, or a pre-2026 refresh can be chosen before
+scoring. Those are materially different protocols and should be confirmed before a headline test.
+
+To claim all three model families work effectively on closure scenarios, additional work is needed:
+
+- Repair or constrain surrogate cargo feasibility, validate per-scenario/affected-corridor errors,
+  and rerun all benchmarks after any architectural change. Closed-edge masks alone are insufficient.
+- If market supply-risk pricing is the objective, confirm an appropriate price design with direct
+  observed Hormuz/supply indicators and pre-event-only fitting. More features can still fail; they
+  do not automatically identify causality or guarantee accuracy.
+- If real export adaptation is an objective, confirm the scope and data for pipeline/export-port
+  reallocations. Do not silently interpret present static stranding as net world supply loss.
+
+### 15.6 Readiness by model
+
+| Model/use | Ready now? | Defensible output |
+|---|---|---|
+| Flow model, hypothetical closure | Yes, as a clearly limited conditional stress test | Network-specific routing, served/stranded demand and assumption-based costs |
+| GNN, weekly observed traffic | Ready for a carefully frozen diagnostic evaluation, not a promised good score | Counts versus persistence/seasonal baselines on actual crisis weeks |
+| GNN, closure scenario surrogate | No, not physically reliable in the tested Hormuz case | A documented failed stress test until feasibility is repaired |
+| Price, frozen weekly forecasts | Can be evaluated with strictly pre-event calibration | Observed price errors, baseline skill, coverage and width |
+| Price, causal Hormuz premium | No | Current model does not identify that quantity |
+| Dashboard, integrated three-model demo | No | Current UI exposes flow outputs; GNN/price integration and parameter consistency are incomplete |
+
+The evidence is sufficient to run an honest research evaluation and learn from failures. It is
+not sufficient to promise decent 2026 errors or present all three models as a validated causal
+crisis-analysis chain.
