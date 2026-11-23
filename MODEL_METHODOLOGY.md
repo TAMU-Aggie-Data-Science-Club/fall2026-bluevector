@@ -27,6 +27,7 @@ No model was retrained or changed to write this guide.
 13. [Reproduction and source files](#13-reproduction-and-source-files)
 14. [Glossary](#14-glossary)
 15. [Methodology audit and Hormuz readiness](#15-methodology-audit-and-hormuz-readiness)
+16. [Executed frozen Hormuz transfer test](#16-executed-frozen-red-sea-gnn-transfer-test-on-2026-hormuz)
 
 ## 1. Results in plain English
 
@@ -1201,3 +1202,101 @@ To claim all three model families work effectively on closure scenarios, additio
 The evidence is sufficient to run an honest research evaluation and learn from failures. It is
 not sufficient to promise decent 2026 errors or present all three models as a validated causal
 crisis-analysis chain.
+
+
+## 16. Executed frozen Red Sea GNN transfer test on 2026 Hormuz
+
+**Run date: November 22, 2026. Result: neither frozen GNN transfers successfully.**
+This section executes the diagnostic proposed in section 15; it does not retrain or repair the models.
+
+### Protocol
+
+- Load the existing `red_sea_2024` temporal checkpoints for both `real_only` and
+  `simulated_plus_real`, with seeds 7, 19 and 43. These are the models evaluated on Red Sea,
+  not models fine-tuned on Red Sea crisis labels.
+- Preserve every weight and saved training scale. Check exact agreement between saved scales and
+  reconstructed original feature normalization, as well as canonical edge ordering. Checkpoint
+  hashes are identical before and after inference.
+- Evaluate **Hormuz alone** on all **37 complete Friday-ending weeks from March 6 through
+  November 13, 2026**. The first four weeks, March 6–27, define onset; April 3–November 13 is
+  the later period. These diagnostic windows were declared before calculating transfer errors;
+  they are not a prospectively registered untouched experiment.
+- Give each model the same graph-wide prior-week transit features as the original trainer. Use
+  all three seeds' mean prediction, with no selection of the best seed or checkpoint.
+- Keep temporal throttle inputs at one. No zero-flow closure mask is supplied to force the answer.
+- Compare identical Hormuz weeks with persistence and the original seasonal baseline, using only
+  lagged observations. Weights remain frozen; observed test history can inform subsequent weeks.
+- Retain the original limits on revised data, publication lags and retrospective simulator priors.
+  This evaluates next-week observed traffic, not counterfactual routing or a whole-crisis forecast
+  made before the event.
+
+### Full-period results
+
+All count errors are transits/week. Percentage errors are fractions in the CSV, converted here
+into percentages.
+
+| Model | MAE | RMSE | MAPE | WAPE | Mean prediction | Direction correct |
+|---|---:|---:|---:|---:|---:|---:|
+| Repeat last week | 18.70 | 57.74 | 123.12% | 108.81% | 27.24 | 8.1% |
+| Real-only GNN | 217.33 | 218.76 | 2,732.25% | 1,264.36% | 234.52 | 51.4% |
+| Simulated + real GNN | 220.76 | 222.50 | 2,813.85% | 1,284.27% | 237.95 | 51.4% |
+| Seasonal | 353.81 | 357.21 | 4,237.94% | 2,058.33% | 371.00 | 51.4% |
+
+Actual mean traffic was **17.19 transits/week**. No actual-zero observations were excluded from
+MAPE. The large percentages are not formatting errors: predictions of hundreds against actual
+counts often in single digits create very large relative errors. MAE and RMSE make the failure
+clear without relying on a small percentage denominator. Informal `100 - MAPE` closeness would
+be negative and is not a useful presentation score here.
+
+Real-only RMSE was **3.79 times** persistence RMSE; mixed RMSE was **3.85 times** persistence.
+Direction around 51% does not rescue forecasts whose traffic magnitudes are grossly incorrect.
+Persistence's low directional score follows its zero-change prediction and should be interpreted
+alongside its much better magnitude errors.
+
+### Onset versus later period
+
+| Period | Weeks | Actual mean | Persistence RMSE | Real-only GNN RMSE | Mixed GNN RMSE |
+|---|---:|---:|---:|---:|---:|
+| March 6–27: onset | 4 | 14.25 | 167.76 | 253.75 | 271.45 |
+| April 3–November 13: later | 33 | 17.55 | 18.06 | 214.13 | 215.81 |
+
+The onset includes the initial collapse from the previous week's 377 transits. Persistence misses
+that first collapse badly but adjusts after observing it. The GNNs continue forecasting much
+higher traffic long after low observations enter their lagged inputs.
+
+For example, on **March 13**, actual traffic was **3**. Persistence predicted **44**, real-only
+predicted **247.36**, and mixed predicted **288.89**. On March 27 actual traffic was **5**;
+persistence predicted **5**, versus **231.40** and **250.19** for the GNNs.
+
+### Interpretation
+
+The frozen networks fail this substantial distribution shift. A tendency toward pre-crisis traffic
+levels, together with seasonal and static-scale inputs, is a plausible explanation, but this run
+is not a feature-ablation study and does not identify a unique cause. Simulator pretraining did
+not fix the transfer failure. Earlier success on Panama/Ever Given cannot be generalized to a
+sustained near-shutdown at Hormuz.
+
+These results should be reported as a failed transfer test. They do not justify using the current
+Red Sea-evaluation GNNs for accurate 2026 Hormuz traffic forecasts. They also do not change the
+separate flow-model or causal-price limitations in section 15. Any subsequent redesign must
+clearly distinguish development on the now-inspected 2026 observations from a genuinely new
+future holdout.
+
+### Reproduce and inspect
+
+From the repository root, using the existing environment and local inputs/checkpoints:
+
+```sh
+python -m scripts.gnn.evaluate_hormuz_transfer
+```
+
+Implementation: [evaluate_hormuz_transfer.py](scripts/gnn/evaluate_hormuz_transfer.py).
+The script fails rather than silently changing the period when complete Hormuz weeks or exact
+saved scales are unavailable. It performs inference only and leaves old scorecards unchanged.
+New ignored outputs in `data/processed/` are:
+
+- `hormuz_transfer_report.csv`: all/onset/later metrics for both GNNs and both baselines.
+- `hormuz_transfer_weekly_predictions.csv`: every averaged forecast, actual and baseline.
+- `hormuz_transfer_seed_predictions.parquet`: per-seed predictions.
+- `hormuz_transfer_seed_report.csv`: seed-level scores, without choosing a winner.
+- `hormuz_transfer_manifest.json`: dates, scale checks, and hashes of the six unchanged checkpoints.
