@@ -1,5 +1,8 @@
 # 🌊 Fourth Deliverable: Baseline Flow Model, Scenario Engine & Validation
 
+> **Original assignment specification:** proposed features, acceptance goals and illustrative figures below are not a certification that they were implemented or achieved. For audited current behavior/results, use [MODEL_METHODOLOGY.md](../MODEL_METHODOLOGY.md), including its Hormuz readiness section.
+
+
 **📅 Due: Wednesday, November 11, 2026**
 
 > **How the model works and how far off it is:** see [`FLOW_MODEL.md`](../FLOW_MODEL.md) for the equations, the calibration, the validation numbers, and the known limits.
@@ -255,7 +258,7 @@ This deliverable uses issue 4 and the integration branch `issue-4/integration`. 
 | ⚙️ Flow & Scenarios | `issue-4/flow-model` | 
 | 🎯 Calibration & Validation | `issue-4/validation` | 
 
-Everyone pushes to their group's branch (pull before you push), and **one person per group** opens a pull request into `issue-4/integration`. See [`GITHUB_GUIDE.md`](GITHUB_GUIDE.md).
+Everyone pushes to their group's branch (pull before you push), and **one person per group** opens a pull request into `issue-4/integration`. See [`GITHUB_GUIDE.md`](../GITHUB_GUIDE.md).
 
 ## ✅ Done checklist
 

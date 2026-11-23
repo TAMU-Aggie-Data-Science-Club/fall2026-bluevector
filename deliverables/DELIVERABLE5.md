@@ -1,5 +1,8 @@
 # 🧠 Fifth Deliverable: GNN & Crude Oil Price Model
 
+> **Original assignment specification:** proposed features, acceptance goals and illustrative figures below are not a certification that they were implemented or achieved. For audited current behavior/results, use [MODEL_METHODOLOGY.md](../MODEL_METHODOLOGY.md), including its Hormuz readiness section.
+
+
 **📅 Due: Wednesday, November 18, 2026**
 
 > **Integration results, 2026-11-22:** the executed comparison and corrected methodology are in
@@ -461,6 +464,8 @@ Those numbers reproduce this run's `validation_report.csv`; they must not be com
 with weekly GNN errors because averaging suppresses noise and the windows differ.
 
 ### GNN: copying the solver is a separate test
+
+> **Later audit:** the Hormuz single-edge closure stress test fails surrogate cargo feasibility despite that case being in pretraining. Aggregate imitation scores below do not establish scenario readiness. See [the quantified audit](../MODEL_METHODOLOGY.md#15-methodology-audit-and-hormuz-readiness).
 
 The separate simulator-only surrogate exports the 22-column `gnn_edge_predictions.parquet` for
 20 unseen compound closures and three historical scenario inputs. It is **not** the real-only

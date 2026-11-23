@@ -4,7 +4,7 @@
 
 ## Overview
 
-Blue Vector builds a tool that models the global maritime shipping network as a graph: roughly 100 of the world's most significant ports as nodes, and shipping lanes (including chokepoints such as the Suez Canal) as edges. It models how traffic, transit times, and costs change across the whole network when any edge is closed or throttled, and predicts how those changes affect the price of crude oil. The final artifact ties free AIS-derived maritime data (IMF PortWatch), a network flow model, a graph neural network, and a downstream economic model into one interactive map.
+Blue Vector builds a tool that models the global maritime shipping network as a graph: roughly 100 of the world's most significant ports as nodes, and shipping lanes (including chokepoints such as the Suez Canal) as edges. It models how traffic, transit times, and costs change across the whole network when any edge is closed or throttled, and explores associations with crude-oil prices; causal price effects are not established. The final artifact ties free AIS-derived maritime data (IMF PortWatch), a network flow model, a graph neural network, and a downstream economic model into one interactive map.
 
 ## Objective
 
@@ -21,7 +21,7 @@ Ship an interactive dashboard where a user can pick any edge in the global shipp
 
 > NetworkX, `searoute`, statsmodels, scikit-learn, and pyarrow are additions to the original suggested stack. Confirm each before adopting (see [`AGENTS.md`](AGENTS.md) §7).
 
-**Algorithms in use.** Dijkstra shortest paths over a directed graph with costs in dollars per barrel, loaded in ten incremental passes (Frank-Wolfe-style) with BPR congestion plus a queue price above capacity, so a throttled chokepoint gets expensive instead of disappearing. The OD matrix comes from iterative proportional fitting (IPF/RAS) against PortWatch port totals, and capacity proxies are high percentiles of historical tanker transits rather than physical limits. Calibration fits only the congestion curve, on the Red Sea H1 window: the Red Sea itself enters as a sourced war-risk premium at Bab-el-Mandeb, not as a throughput cut. It is scored on held-out H2, reported with MAE, RMSE, MAPE and direction match. The GNN is trained on simulated scenarios from the flow model and benchmarked against Prophet and LSTM. Details in [`FLOW_MODEL.md`](FLOW_MODEL.md).
+**Algorithms in use.** IPF fits the crude OD matrix to port marginals. Dijkstra routing loads demand in ten passes with congestion costs; closed edges are removed and saturated throttled edges are removed between passes. The retained Red Sea settings include both a 0.85 throughput fraction and a war-risk parameter on Suez/Bab-el-Mandeb. Plain PyTorch GNNs are evaluated against persistence/seasonal traffic baselines; a separate simulator surrogate remains experimental. NumPy Ridge predicts weekly Brent corrections using lagged observed Suez shares, with calibrated residual intervals. Prophet/LSTM, PyTorch Geometric and causal supply-risk pricing are not implemented. See [the methodology](MODEL_METHODOLOGY.md) and [Hormuz audit](MODEL_METHODOLOGY.md#15-methodology-audit-and-hormuz-readiness).
 
 See [`DATA.md`](DATA.md) for concrete data sources and how to access them.
 
@@ -35,13 +35,15 @@ See [`DATA.md`](DATA.md) for concrete data sources and how to access them.
 
 ## Suggested scope (v1)
 
-Model **one commodity (crude oil)** on a **global network of about 100 ports**, with **Suez Canal / Red Sea** as the flagship, validated disruption. Every chokepoint is just an edge, so any edge can be closed or throttled. Only Suez / Bab-el-Mandeb (and partly Panama) can be checked against real events, so every other scenario is labeled a what-if.
+This section is the original product ambition, not a completed-feature list. Current implementation and limits are documented in [MODEL_METHODOLOGY.md](MODEL_METHODOLOGY.md).
+
+Model **one commodity (crude oil)** on a **global network of about 100 ports**, with **Suez Canal / Red Sea** as the flagship, validated disruption. Every chokepoint is just an edge, so any edge can be closed or throttled. The executed validation covers Red Sea, Ever Given and Panama. Observations now also cover the 2026 Hormuz crisis, but its formal evaluation is pending; hypothetical closures remain labeled what-ifs.
 
 Build:
 
 1. Port selection + graph skeleton: rank ports by volume from PortWatch to pick the ~100 most significant (with a stated coverage figure), add ~15–20 junction nodes, treat chokepoints as edges, and compute sea distances and geometry,
 2. Data ingestion: PortWatch (transit counts, port calls, volume estimates), UN Comtrade (crude oil, HS 2709), EIA (Brent), and a Global Fishing Watch sample for ship-level validation,
-3. Baseline flow model: build an origin-destination (OD) oil matrix from Comtrade calibrated to PortWatch port totals, then route it with minimum-cost flow including capacity limits and congestion penalties. A scenario engine closes or throttles any edge and re-solves, so every edge gets a predicted change. The flow model is also the simulator that generates training scenarios for the GNN, and the baseline the GNN must beat,
+3. Baseline flow model: build an origin-destination (OD) oil matrix from Comtrade calibrated to PortWatch port totals, then route it with incremental lowest-cost path assignment, congestion penalties and between-pass throttle saturation. A scenario engine closes or throttles any edge and re-solves, so every edge gets a predicted change. The flow model is also the simulator that generates training scenarios for the GNN, and the baseline the GNN must beat,
 4. Graph neural network (core model): trained on simulated disruption scenarios from the flow model plus real PortWatch data (including the 2023–24 Red Sea diversions), predicting how every edge attribute changes when any edge is closed or throttled, and evaluated against the flow model on held-out real events,
 5. Oil price model: shipping cost per barrel computed from the network, plus a statistical model of the Brent price using network-derived features (indices built from the edge-level predictions), reporting intervals, not point estimates, and benchmarked against a naive random-walk forecast,
 6. Validation against real events: the 2023–24 Red Sea diversions (primary), the 2021 Ever Given blockage, and the 2023–24 Panama drought (partial),
@@ -54,18 +56,18 @@ Every dynamic attribute carries a `source` field: `observed` (real data), or `mo
 | Attribute | Type | Observed or modeled |
 |---|---|---|
 | Length, line geometry, minimum transit days | Static | Computed |
-| Vessel-size limit, toll / fixed cost, region tag | Static | Domain rules and published tariffs |
-| Capacity proxy (max observed throughput) | Static | Derived from history |
+| Toll / fixed cost, region tag | Static | Domain rules and published tariffs; physical vessel-size restrictions remain incomplete |
+| Capacity proxy (historical percentile) | Static | Derived from history |
 | Tanker transit count | Dynamic | Observed at chokepoint edges; modeled elsewhere |
 | Other vessel types (container, dry bulk, general cargo, Ro-Ro) transit counts | Dynamic | Observed at chokepoints only; not modeled in v1 |
 | Estimated trade volume and estimated oil volume | Dynamic | PortWatch estimates at chokepoints; modeled elsewhere (crude-share assumption) |
 | Average vessel size, utilization, anomaly vs. seasonal baseline | Dynamic | Derived |
-| Transit days and delay (between two ports) | Dynamic | Sampled from tracked ships; modeled elsewhere |
+| Transit days and delay (between two ports) | Dynamic | Modeled; a published corridor benchmark is available, but no GFW voyage-sample validation has been reproduced |
 | Predicted flow, change vs. baseline, share rerouted, extra days, cost per barrel | Scenario output | Modeled |
 
-**Every dynamic tanker metric is a model output for every edge**, in the baseline and in any scenario, together with the change between them: oil volume, tanker transits, utilization, delay, anomaly vs. seasonal baseline, share rerouted, and cost per barrel for routes using the edge. Length, minimum transit days, size limits, and tolls are inputs; capacity is the input a scenario changes. Version 1 models tankers (crude oil) only.
+**Every dynamic tanker metric is a model output for every edge**, in the baseline and in any scenario, together with the change between them: oil volume, tanker transits, utilization, delay, anomaly vs. seasonal baseline, share rerouted, and cost per barrel for routes using the edge. Length, minimum transit days, cargo-size proxies, and tolls are inputs; capacity is the input a scenario changes. Version 1 models tankers (crude oil) only.
 
-Node attributes: port calls and import/export tons by vessel type, capacity proxy, role tag (exporter, importer, refining hub, transshipment), and country. Transit counts between any two nodes are stored as an origin-destination matrix: sampled from tracked ships, constrained by PortWatch port totals, and modeled for the rest.
+Node attributes: port calls and import/export tons by vessel type, capacity proxy, role tag (exporter, importer, refining hub, transshipment), and country. The OD matrix stores modeled crude barrels allocated from Comtrade and PortWatch marginals; it is not an observed ship-to-ship voyage matrix.
 
 **Out of scope for v1:** processing raw global AIS, real-time AIS ingest, multi-goods portfolios, modeling non-tanker vessel types, port-level congestion modeling, trajectory-level lane extraction or full-ocean H3 gridding, ship-in-transit time-stepped simulation (stretch only), and crude grade or refinery-level modeling.
 
@@ -79,18 +81,16 @@ See [`DELIVERABLES.md`](DELIVERABLES.md) for the suggested deliverable breakdown
 | [`DELIVERABLES.md`](DELIVERABLES.md) | Suggested deliverables and rough timeline. A living plan, not a contract. |
 | [`FLOW_MODEL.md`](FLOW_MODEL.md) | How the crude flow model works: equations, calibration, validation numbers, and current error. |
 | [`DATA.md`](DATA.md) | Suggested data sources, how to access them, and the source register. |
-| [`TEAMS.md`](TEAMS.md) | Subteam structure, source ownership, and the pipeline build plan for Weeks 1–2. |
-| [`FIRST_DELIVERABLE.md`](FIRST_DELIVERABLE.md) | The first deliverable: what is due, who does what, and what data we need from each source. |
+| [`STRUCTURE.md`](STRUCTURE.md) | Current team roster and repository role policy. |
+| [`DELIVERABLE1.md`](deliverables/DELIVERABLE1.md) | The first deliverable: what is due, who does what, and what data we need from each source. |
 | [`GITHUB_GUIDE.md`](GITHUB_GUIDE.md) | A short, step-by-step guide to the GitHub workflow for members. |
 | [`data/`](data/) | Local working folder for datasets. **Git-ignored** — data is never committed. |
 | [`AGENTS.md`](AGENTS.md) | Machine-facing workflow rules for AI coding agents. |
-| [`CODEOWNERS`](CODEOWNERS) | **Team roster + review policy.** The PM, members, and the code-owner rule for PRs into `main`. |
+| [`MODEL_METHODOLOGY.md`](MODEL_METHODOLOGY.md) | Beginner methodology, current scores, limitations, and Hormuz readiness. |
 
 ## Team
 
-The current PM and members for this project are listed in [`CODEOWNERS`](CODEOWNERS). The PM listed there is the code owner for PRs into `main`.
-
-Subteams, source ownership, and the pipeline build plan are in [`TEAMS.md`](TEAMS.md).
+The current PM and members and repository role policy are listed in [`STRUCTURE.md`](STRUCTURE.md). Source ownership and qualifications are recorded in [`DATA.md`](DATA.md).
 
 ## Notes for the PM
 

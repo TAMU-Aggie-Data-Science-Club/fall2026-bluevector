@@ -20,11 +20,11 @@ graph tables these scripts read and write (Deliverable 4 loads `config/nodes.csv
 ## Technology and algorithms
 
 - **Tables:** Python 3, pandas, NumPy, pyarrow (Parquet).
-- **Graph:** NetworkX. The flow model uses single-source Dijkstra (one run per origin port, weights in dollars per barrel) inside a ten-pass incremental loading loop with BPR congestion and a queue price above capacity, so a throttle makes an edge expensive rather than removing it. The graph builders use all-pairs Dijkstra to decide port connectors, and shortest paths for connectivity and alternative-route checks.
+- **Graph:** NetworkX. The flow model uses single-source Dijkstra (one run per origin port, weights in dollars per barrel) inside a ten-pass incremental loading loop with BPR congestion and a queue price above capacity, with closed edges removed and saturated throttled edges removed between loading passes. The graph builders use all-pairs Dijkstra to decide port connectors, and shortest paths for connectivity and alternative-route checks.
 - **Distances and geometry:** searoute, GeoPandas, Shapely.
 - **Fitting and scoring:** iterative proportional fitting (IPF/RAS) for the OD matrix, percentile capacity proxies, grid-search calibration with an H1/H2 time split, and MAE, RMSE, MAPE and direction match for validation.
 - **Batch runs:** a `multiprocessing` process pool for the 337-scenario GNN set (`--workers`).
-- **Planned for Deliverable 5 and later:** PyTorch Geometric (GNN), statsmodels/scikit-learn (price model), Prophet/LSTM benchmarks, Streamlit and Kepler.gl (dashboard).
+- **Implemented modeling:** plain PyTorch GNN, NumPy Ridge price regression and calibrated residual bands; persistence/seasonal and random-walk/AR(1) benchmarks. Prophet/LSTM, PyTorch Geometric and causal price decomposition remain unimplemented. The existing Streamlit dashboard exposes flow outputs, not all three model families.
 
 ## Run order
 
@@ -57,8 +57,7 @@ python scripts/od_matrix/od_matrix.py
 python scripts/od_matrix/od_checks.py
 ```
 
-Every script resolves `config/` and `data/` from its own location, so it works from any working
-directory. `graph_validation.py` writes `config/validation_results.csv`; `build_connector_edges.py`
+Run from the repository root. Several scripts resolve paths from their own location, while others still use working-directory-relative data paths. `graph_validation.py` writes `config/validation_results.csv`; `build_connector_edges.py`
 writes `config/edges.csv`.
 
 ## Note on deliverable docs
@@ -151,3 +150,5 @@ matrix is saved separately as `price_model_design.parquet`, preserving the histo
 feature contract. Missing historical route quantities and causal freight/risk components remain
 missing. Scenario price sensitivities carry interpretation/extrapolation flags and are not causal
 supply-shock estimates. Their residual bands are not uncertainty intervals for causal effects.
+
+See [the dated Hormuz readiness audit](../MODEL_METHODOLOGY.md#15-methodology-audit-and-hormuz-readiness) before interpreting closure outputs. Existing Hormuz closure cases were used in surrogate pretraining, the surrogate violates cargo feasibility on the closure smoke test, and the price model lacks a direct supply-loss input.

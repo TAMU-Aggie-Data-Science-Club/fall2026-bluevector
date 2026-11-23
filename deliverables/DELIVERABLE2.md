@@ -1,5 +1,8 @@
 # 🗺️ Second Deliverable: Node and Edge Selection + Initial Data Pipeline
 
+> **Original assignment specification:** proposed features, acceptance goals and illustrative figures below are not a certification that they were implemented or achieved. For audited current behavior/results, use [MODEL_METHODOLOGY.md](../MODEL_METHODOLOGY.md), including its Hormuz readiness section.
+
+
 **📅 Due: Sunday, October 25, 2026**
 
 ## 🎯 What this is
@@ -144,7 +147,7 @@ This deliverable uses issue 2 and the integration branch `issue-2/integration`. 
 1. **Everyone in the group pushes their work to the group's branch.** Pull before you push so you don't overwrite each other. If the branch doesn't exist yet, one person creates it from `issue-2/integration`.
 2. **One person from each group opens a pull request** from the group's branch into `issue-2/integration` (not `main`).
 
-Follow [`GITHUB_GUIDE.md`](GITHUB_GUIDE.md). A good midpoint goal: draft port list and first pipelines running by **Friday, October 23**.
+Follow [`GITHUB_GUIDE.md`](../GITHUB_GUIDE.md). A good midpoint goal: draft port list and first pipelines running by **Friday, October 23**.
 
 ## ✅ Done checklist
 

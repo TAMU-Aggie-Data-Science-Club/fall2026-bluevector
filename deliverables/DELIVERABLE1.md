@@ -1,10 +1,13 @@
 # 🚢 First Deliverable: Source Documentation and Validation
 
+> **Original assignment specification:** proposed features, acceptance goals and illustrative figures below are not a certification that they were implemented or achieved. For audited current behavior/results, use [MODEL_METHODOLOGY.md](../MODEL_METHODOLOGY.md), including its Hormuz readiness section.
+
+
 **📅 Due: Sunday, October 11, 2026**
 
 ## 🎯 What this is
 
-Before we build anything, we make sure our data is real, free to use, and says what we think it says. Each subteam looks at its own two sources and records what it finds in the table in [`DATA.md`](DATA.md).
+Before we build anything, we make sure our data is real, free to use, and says what we think it says. Each subteam looks at its own two sources and records what it finds in the table in [`DATA.md`](../DATA.md).
 
 You do **not** need to know these data sources already. The steps below tell you where to look and what to write down. ⭐ Deeper checks are marked **optional**.
 
@@ -14,7 +17,7 @@ You do **not** need to know these data sources already. The steps below tell you
 2. **The exact field names** for the data we need from each of your sources (listed below).
 3. **One quick check per source**, with pass or fail and one line of why.
 4. **A formula check:** for each formula listed under your subteam, `ok` or `needs change: <what and why>`.
-5. **One pull request per subteam**, into the shared integration branch. See [`GITHUB_GUIDE.md`](GITHUB_GUIDE.md) and [Where your pull request goes](#-where-your-pull-request-goes).
+5. **One pull request per subteam**, into the shared integration branch. See [`GITHUB_GUIDE.md`](../GITHUB_GUIDE.md) and [Where your pull request goes](#-where-your-pull-request-goes).
 
 ⭐ *Optional extras:* the deeper checks listed under each subteam.
 

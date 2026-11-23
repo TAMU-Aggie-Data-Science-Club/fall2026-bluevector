@@ -1,7 +1,6 @@
 # Blue Vector — Technical Specification (v1)
 
-**Status:** 16 November 2026. Describes the pipeline built in Deliverables 3–4 on `main`, plus the
-Deliverable 5 design (GNN and price model) and the current `app/` dashboard.
+**Status:** audited 22 November 2026. This specification retains historical design/derivation sections; current GNN/price methods and results are in [MODEL_METHODOLOGY.md](MODEL_METHODOLOGY.md), and the [Hormuz readiness audit](MODEL_METHODOLOGY.md#15-methodology-audit-and-hormuz-readiness) takes precedence over presentation ambitions. A named source check or historical derivation is not a new validation of current outputs.
 
 **How to read the status labels**
 
@@ -14,7 +13,7 @@ Deliverable 5 design (GNN and price model) and the current `app/` dashboard.
 **Three rules the whole project follows**
 
 1. Every dynamic value says where it came from: `observed`, `modeled`, `simulated` or `gnn`.
-2. One time step everywhere: one week. PortWatch reports weekly chokepoint counts, so the model and
+2. One time step everywhere: one week. daily PortWatch inputs are aggregated to weekly chokepoint counts, so the model and
    the data it is scored against use the same clock.
 3. Never commit `data/`. Commit `config/` and scripts only.
 
@@ -37,17 +36,17 @@ searoute ──┘                                                       ├→ 
 
 | # | Stage | Input | Output | Technology | Evidence |
 |---|---|---|---|---|---|
-| 1 | Sources | APIs and downloads | raw tables | requests, `comtradeapicall`, pandas | source checks in `DATA.md` |
+| 1 | Sources | APIs and downloads | raw tables | requests, pandas | source checks in `DATA.md` |
 | 2 | Ports and graph | PortWatch, searoute, NGA | `config/nodes.csv`, `config/edges.csv` | pandas, searoute, NetworkX | 33 graph checks, 32 pass |
-| 3 | OD matrix | Comtrade, PortWatch, EIA | `data/interim/od_matrix.csv` | pandas, IPF | 5,380 pairs, 12.11 G bbl/yr |
-| 4 | Flow model | graph + OD + parameters | `data/processed/scenario_edge_flows.parquet` | NetworkX, NumPy | H1 share error 0.0145 |
+| 3 | OD matrix | Comtrade, PortWatch, EIA | `data/interim/od_matrix.csv` | pandas, IPF | 5,380 pairs, 7.552 G bbl/yr |
+| 4 | Flow model | graph + OD + parameters | `data/processed/scenario_edge_flows.parquet` | NetworkX, NumPy | retained H1 share target unmet; calibration metadata is historical |
 | 5 | Validation | PortWatch events, EIA voyage benchmark | `validation_report.csv`, `corridor_delays_validation.csv` | pandas | 3 held-out events |
-| 6 | GNN | 337 simulated scenarios + observed weeks | `gnn_edge_predictions.parquet` (**planned**) | PyTorch Geometric | scored against the solver |
-| 7 | Price | edge outputs + Brent | `price_backtest_report.csv` (**planned**) | statsmodels, scikit-learn | vs random walk |
+| 6 | GNN | 337 simulated scenarios + observed weeks | `gnn_edge_predictions.parquet` (experimental surrogate), separate temporal forecasts | plain PyTorch | real-only and mixed backtests; closure feasibility not established |
+| 7 | Price | edge outputs + Brent | `price_backtest_report.csv` | NumPy Ridge | 2.6% RMSE gain vs random walk; statistically uncertain |
 | 8 | Dashboard | graph + scenario outputs | Streamlit app (**built, partial**) | Streamlit, PyDeck, Kepler.gl | manual review |
 
 **Scale.** 142 nodes (100 ports, 42 junctions), 279 edges (10 chokepoints, 69 lanes, 200 connectors),
-5,380 port pairs, 151,748,398 barrels of crude per week in the baseline.
+5,380 port pairs, 144,826,807 barrels of crude per week in the baseline.
 
 ---
 
@@ -59,7 +58,7 @@ searoute ──┘                                                       ├→ 
 |---|---|---|---|
 | IMF PortWatch — Daily Ports | `date`, `portid`, `portname`, `country`, `ISO3`, `import_tanker`, `export_tanker`, `portcalls_tanker`, `import_*` / `export_*` for container, dry bulk, general cargo, RoRo | port ranking, port totals, node attributes | ArcGIS REST, paginated at 1,000 rows, no key; `requests` |
 | IMF PortWatch — Daily Chokepoints | `date`, `portid`, `portname`, `n_tanker`, `capacity_tanker`, `n_total` | capacity proxy, utilization, anomaly, validation targets | same service family, no key |
-| UN Comtrade | `reporterCode`, `partnerCode`, `flowCode`, `period`, `cmdCode` (2709), `netWgt`, `motCode` | country-to-country crude flows | `comtradeapicall`, free key, 500 calls/day |
+| UN Comtrade | `reporterCode`, `partnerCode`, `flowCode`, `period`, `cmdCode` (2709), `netWgt`, `motCode` | country-to-country crude flows | bounded cached REST requests, free key, 500 calls/day |
 | EIA | daily Brent spot; chokepoint oil flow in million barrels per day | crude-share calibration, price target | REST or XLS, free key |
 | NGA World Port Index | port name, UN/LOCODE, lat/lon, depth, max vessel dimensions | port matching, size limits | public download |
 | searoute | `length`, `geometry`, `traversed_passages` | edge length, geometry, passage checks | local package, no key |
@@ -76,7 +75,7 @@ searoute ──┘                                                       ├→ 
 | `netWgt` (Comtrade 2709) | `barrels_per_year` by country pair | `od_matrix/od_country_flows.py` | `data/interim/country_flows.csv` |
 | port totals | export/import shares per country | `od_matrix/od_port_shares.py` | `data/interim/port_shares.csv` |
 | EIA flow ÷ PortWatch tanker volume | `crude_share` (diagnostic) | `od_matrix/od_crude_share.py` | `data/interim/crude_share.csv` |
-| Comtrade ÷ PortWatch (global) | `global_default` crude share 0.8511 | `od_matrix/od_crude_share.py` | `data/interim/crude_share.csv` |
+| Comtrade ÷ PortWatch (global) | `global_default` crude share 0.53 (agreed run assumption) | `od_matrix/od_crude_share.py` | `data/interim/crude_share.csv` |
 | country flows + shares | OD pairs in barrels per year | `od_matrix/od_matrix.py` | `data/interim/od_matrix.csv` |
 | OD + graph + parameters | edge flows, transits, delay, cost | `flow_model/*` | `data/processed/*` |
 | PortWatch event weeks | observed targets | `validation/validation_targets.py` | `data/processed/validation_targets.csv` |
@@ -145,7 +144,7 @@ graph represents.
 Junctions carry only `node_id`, `name`, `lat`, `lon`, `country_iso3`, `portwatch_portid`. They exist
 where lanes meet (e.g. Gulf of Aden) and hold no flow attributes of their own.
 
-### 2.3 Edge schema — Built (`config/edges.csv`, 279 rows, 36 columns)
+### 2.3 Edge schema — Built (`config/edges.csv`, 279 rows, 32 columns)
 
 **Counts.** 10 chokepoints (`source = observed`), 69 lanes and 200 connectors (`source = modeled`).
 
@@ -176,7 +175,7 @@ basis, not the semantics.
 |---|---|
 | `weekly_tanker_transits` | Σ daily `n_tanker` over a Friday-ending week |
 | `capacity_tanker_tonnes` (upstream) | Σ daily `capacity_tanker` |
-| `avg_vessel_size_tonnes` | `capacity_tanker_tonnes / n_tanker` — mean estimated cargo per transit; a floor on vessel size, not DWT |
+| `avg_vessel_size_tonnes` | `capacity_tanker_tonnes / n_tanker` — estimated carrying-capacity tonnes per tanker transit; neither measured loaded cargo nor vessel dimensions |
 | `est_oil_volume` | `capacity_tanker × 7.3 × crude_share` |
 | `capacity_proxy` | 95th percentile of weekly tanker transits, 2019-01-01 → 2023-10-31 |
 | `utilization` | `weekly_tanker_transits / capacity_proxy`; may exceed 1 |
@@ -245,6 +244,8 @@ Barrels per year per country pair is the only thing this stage produces. Prices 
 discarded; the model routes physical barrels.
 
 ### 3.2 Crude share: the correction that made the OD matrix valid
+
+**Historical derivation:** the numerical 0.8511/0.556 calculations below explain earlier revisions, not a new estimate in this run. The executed OD run fixes the approved port-universe share at 0.53. Current per-chokepoint estimates are separate, including Panama 0.058; the 0.48–0.93 range excludes Panama.
 
 **First attempt — per chokepoint.**
 
@@ -362,7 +363,7 @@ until max relative gap < 1e-6, or 1000 passes
 ```
 
 **Result.** 5,380 port pairs, 100 ports, **7.91 billion barrels of crude per year** =
-151,748,398 barrels per week.
+144,826,807 barrels per week.
 
 **Checks** (`od_matrix/od_checks.py`): schema, no NaN, no negatives, no duplicate pairs, no
 self-pairs, no domestic pairs, row and column sums within 0.01 %, and share sums of 1. All pass.
@@ -381,66 +382,36 @@ and it is the baseline the GNN must beat.
 
 ### 4.2 Parameters (`config/flow_params.json`)
 
-| Parameter | Value | Why |
+| Parameter | Retained value | Interpretation |
 |---|---|---|
-| `speed_knots` | 13.0 | fleet average; 14 kn is the fastest documented |
-| `alpha`, `beta` | 0.15, 4.0 | DELIVERABLE4 defaults, not fitted |
-| `daily_tanker_rate` | $45,800 (low $35k, high $75k) | 2024 Q1 Suezmax TCE, used for cost per barrel |
-| `avg_barrels_per_transit` | 1,000,000 | fallback when an edge has no observed vessel size |
-| `awrp_usd_per_bbl` | 0 in the baseline | sourced war-risk premium, set per scenario; charged once per listed-area transit |
-| `awrp_red_sea_h1/h2_usd_per_bbl` | $0.41 / $0.83 | sourced: AWRP 0.5–1.0 % of hull value per transit, converted on a Suezmax basis |
-| `max_util_for_delay` | 5.0 | caps the BPR curve |
-| `n_congestion_iters` | 10 | incremental loading passes |
+| `speed_knots` | 13 | sailing speed assumption |
+| `alpha`, `beta` | 0.12, 3.0 | historical congestion calibration settings |
+| `daily_tanker_rate` | $50,000 | base; low $35k, high $75k |
+| `avg_barrels_per_transit` | 1,000,000 | fallback, not all observed cargo sizes |
+| `red_sea_throttle` | 0.85 | requested fraction of baseline throughput retained |
+| `red_sea_war_risk_per_bbl` | 1.25 | risk parameter scaled by lost throughput fraction |
+| `risk_passages` | Suez and Bab-el-Mandeb | both applicable under disruption |
+| `max_util_for_delay` | 5 | BPR-utilization cap |
+| `over_capacity_delay_days_per_unit` | 1 | excess queue slope |
+| `n_congestion_iters` | 10 | loading passes |
+
+Calibration diagnostic fields in the JSON describe an earlier fit, not the newly rebuilt inputs.
+The current config has no `awrp_per_bbl` or `cost_barrels_per_cargo` parameter.
 
 ### 4.3 One solve, in order
 
-1. **Demand.** `barrels_per_week = barrels_per_year / 52.1429`.
-2. **Directed graph.** Lanes and chokepoints are traversable both ways; connectors split into
-   arrive/leave arcs so ports are never shortcuts.
-3. **Cost per arc, in dollars per barrel.**
-   ```
-   free_flow_days  = length_nm / (13 × 24)
-   transits        = barrels_per_week / barrels_per_ship
-   utilization     = transits / capacity_weekly
-   delay_days      = free_flow_days × α × min(utilization, 5)^β
-   cost_per_barrel = (free_flow_days + delay_days) × daily_rate / barrels_per_ship
-                   + toll_usd_per_bbl
-                   + awrp_per_bbl                      # flat, listed areas only
-   ```
-   `free_flow_days` is the edge's own sailing time; α 0.15 and β 4.0 are the curve's published
-   defaults, and at observed utilisation the term is a rounding error.
-4. **Route.** Dijkstra, one single-source run per origin port
-   (`networkx.single_source_dijkstra`), weights non-negative. One pass moves **1/10** of every OD
-   pair, then costs are recomputed from the flows so far — incremental loading, the standard
-   Frank-Wolfe-style approximation of user equilibrium.
-5. **A throttle is a wall.** A throttle lowers `capacity_weekly` to that fraction of the baseline
-   transits; once flow reaches the ceiling the edge leaves the graph and the surplus reroutes or
-   strands. Only a closed edge (`throttle = 0`) strands crude outright, which is what lets Hormuz
-   strand 21 % of crude.
-6. **Record.** Demand with no path is `stranded`.
+1. Convert OD barrels/year to barrels/week by 52.1429.
+2. Split port origins/destinations so routes cannot pass through an intermediate port. Sea corridors have arcs in both directions with shared physical edge IDs.
+3. Compute sailing days = length/(13 * 24), transits = volume/edge cargo, and utilization = transits/capacity. Delay = service_days * 0.12 * min(utilization,5)^3 + max(0,utilization-1), with one service day at chokepoints and free sailing days elsewhere.
+4. Arc cost = (sailing + delay) * daily_rate / edge_cargo + toll + applicable risk_parameter * (1 - requested_throughput_fraction). Primary cargo is estimated carrying-capacity tonnes * 7.33; the alternative oil/transit fallback alone is clipped. These are not observed loaded crude or enforced vessel dimensions.
+5. Route one tenth of each OD demand by Dijkstra, updating costs between passes. Closed edges are absent. Throttled edges already at 98% saturation are removed before later passes; an increment can overshoot the ceiling. Open-edge capacity proxies remain soft congestion references.
+6. Record any demand with no route as stranded. Partial throttles can strand demand too: this audit's 50% Hormuz case strands 10.61% of modeled demand.
 
-There is no min-cost-flow solve: capacity acts through loading and the queue price, so the result is
-an approximate equilibrium, not a capacitated optimum. That is a documented choice, not an oversight.
-
-A hard cut at 98 % of capacity, as the model used to apply, kept utilisation below 1.0 always, which
-left α and β with nothing to do. Priced instead, the Ever Given week runs Suez at 204 % of capacity
-with 10.8 days of queueing, and α/β still move the answer by only about a point because the linear
-queue carries 10.4 of those days.
+This is an approximate incremental assignment, not exact capacitated minimum-cost flow or a guarantee of an equilibrium optimum. The formerly described soft-queue-only implementation is not the current code.
 
 ### 4.4 What a throttle means
 
-A throttle is the **fraction of pre-event crude throughput still available**: 0 closed, 0.65 means
-65 % still passes.
-
-```
-capacity_weekly  = throttle × baseline_transits(edge)   when throttle < 1
-capacity_weekly  = capacity_proxy                       when open
-throttle_factor  = capacity_weekly / capacity_proxy     # reported on the D3 basis
-```
-
-Using `capacity_proxy` directly would not bind: the proxy counts all tankers (187.5 slots/week at
-Suez) while the crude model routes about 32.3 transits/week. At 0.65 the edge keeps
-`0.65 × 32.3 ≈ 21.0` crude transits, reported as `throttle_factor ≈ 0.11` of the proxy.
+Requested q is the fraction of baseline crude throughput retained. Capacity is q * baseline modeled transits when q < 1 and baseline flow is positive; for zero baseline flow it falls back to q * open capacity. Open capacity is the historical tanker proxy multiplied by the configured corridor crude share. The reported throttle_factor is capacity/open-capacity, clipped to [0,1], not always q. At Suez, q = 0.85 gives about 26.47 slots from a 31.139-transit baseline, versus about 91 open slots. Do not apply an all-tanker proxy directly to crude flow or call modeled baseline traffic measured throughput.
 
 ### 4.5 Output contract — 22 columns
 
@@ -469,10 +440,10 @@ Throttles come from the event, never from the answer being scored.
 
 | Scenario | Suez transits/wk | Suez share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 32.5 | 0.5824 | 0 |
-| Red Sea (H1 and H2 are the same run) | 22.6 | 0.4395 | 0 |
-| Ever Given 2021 | 3.9 | 0.0867 | 0 |
-| Panama drought 2023 | 32.5 | 0.5829 | 0 |
+| baseline | 31.139 | 0.5835 | 0 |
+| Red Sea (H1 and H2 are the same run) | 21.724 | 0.4407 | 0 |
+| Ever Given 2021 | 3.779 | 0.0875 | 0 |
+| Panama drought 2023 | 31.188 | 0.5839 | 0 |
 
 H1 and H2 are one row because one throttle serves both windows — the model has no way to say that
 March–June behaved differently from December–February, and the fitted share sits between the two
@@ -509,36 +480,9 @@ never ranked against physical chokepoints.
 
 ### 5.1 Calibration design — Built
 
-Grid: α ∈ {0.10, 0.12, 0.15}, β ∈ {3, 4} = **6 solves**. The Red Sea throughput cut is gone
-(Suez stayed open) and the war-risk premium is sourced, so nothing about the crisis is fitted. All
-six points produce identical Red Sea results — the congestion curve is not identified at these
-utilisations, and the model is determined entirely by its inputs. Under Ever Given the grid is not identified either, because a throttled edge is removed at its
-ceiling and the curve never carries the delay.
+The grid function minimizes H1 (December 2023–February 2024) absolute Suez/Cape percentage-change errors plus Suez-share error over alpha, beta, throttle and risk. The retained config's H1 share error is 0.1017, outside its 0.05 target. It was not recalibrated on the rebuilt OD matrix in this audit. Current raw crude share is 0.4407 versus observed all-tanker shares 0.5412 H1 and 0.4167 H2; these raw-share comparisons themselves mix populations.
 
-```
-loss = |Suez%_model − Suez%_observed| / 100
-     + |Cape%_model − Cape%_observed| / 100
-     + |Suez_share_model − Suez_share_observed|
-```
-
-Fitted on **Dec 2023–Feb 2024 only**. Mar–Jun 2024 is never used to choose a parameter.
-
-| | Model | Observed | Error |
-|---|---|---|---|
-| H1 Suez change | −30.3 % | −29.5 % | 0.8 pp |
-| H1 Cape change | +24.0 % | +68.8 % | 44.8 pp |
-| H1 Suez share | 0.4395 | 0.5412 | **0.1017** |
-| H2 Suez share (held out) | 0.4395 | 0.4167 | **0.0228** |
-
-Total loss 0.558, dominated by the Cape term (0.449). The share target (< 0.05) is missed on H1 and
-met on held-out H2, which is the reverse of what the same fit produced before capacity moved onto the
-observed crude basis — the constant just slid along the line between two windows 0.124 apart.
-
-The Cape is what no input fixes. About 0.8 Cape transits move per Suez transit lost (+24.0 % against
-−30.3 %); the observation is 2.34 (68.8 % against 29.5 %). The Cape now has 95 crude transits of
-observed capacity, so it absorbs the reroute without any price pressure to match the observation;
-the gap is that too little crude sits on a Cape path at baseline (3.1M bbl/wk modelled against
-39.7M observed all-tanker throughput).
+Previous retention discussion considered H2/Ever Given behavior, so the final historical settings are retrospectively assessed, not selected in a pristine untouched-test protocol. A 2026 study must freeze all settings and calibration before its evaluation boundary. The price-feature mapping now applies crude percentage responses to observed tanker baselines before forming shares.
 
 ### 5.2 Why validation compares shifts, not levels
 
@@ -549,20 +493,22 @@ permanent ~2.5× error that says nothing about the model. So:
 2. apply the model's percentage change;
 3. compare that implied level with the observed crisis level.
 
-Every metric below is about direction and relative size.
+Metrics below are absolute errors in implied observed all-tanker levels after relative-response mapping; they are not raw crude-versus-tanker count errors.
 
 ### 5.3 Held-out events
 
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pp) |
 |---|---|---|---|---|---|
-| Red Sea, Mar–Jun 2024 | 22.2 | 30.1 | 0.177 | 0.8 | 18.4 |
-| Ever Given peak week | 23.8 | 31.9 | 0.236 | 0.8 | 21.0 |
-| Panama drought | 16.8 | 23.2 | 0.120 | 0.7 | 13.7 |
+| Red Sea, Mar–Jun 2024 | 22.160 | 30.1153 | 0.1772 | 0.8 | 18.44 |
+| Ever Given peak week | 23.628 | 31.7936 | 0.2342 | 0.8 | 20.91 |
+| Panama drought | 16.233 | 23.0396 | 0.1118 | 0.7 | 13.00 |
 
-RMSE well above MAE in all three means the error sits in a few corridors, not everywhere.
+RMSE above MAE indicates uneven error magnitudes; consult per-corridor details before claiming a particular concentration pattern.
 `validation_event_details.csv` names them.
 
 ### 5.4 Voyage-time check
+
+**Historical diagnostic, not ship-level validation:** despite its filename the checker uses a published benchmark, not GFW observations. Its undirected graph can traverse intermediate ports that the main router forbids. Old corridor figures below have not been freshly reproduced and do not certify routed-OD delays.
 
 Benchmark: Persian Gulf → Rotterdam, 19 days via Suez and ~35 via the Cape (EIA, Feb 2024, laden
 Suezmax at 14 kn).
@@ -589,105 +535,47 @@ unrelated lanes.
 
 ---
 
-## 6. GNN — Planned (Deliverable 5, due 18 Nov 2026)
+## 6. GNN — Implemented research prototype
 
 ### 6.1 Purpose and honest claim
 
-The solver takes ~7 s per scenario. The GNN learns the same mapping — graph plus throttle settings
-in, per-edge volume, transits, utilization and delay out — so it answers in milliseconds and
-interpolates combinations nobody solved. Because it is trained on solver output, synthetic accuracy
-measures how well it copies the solver; the real test is the held-out PortWatch events.
+The temporal GNN forecasts next-week observed all-tanker counts. The separately exported simulator surrogate approximates flow scenarios and is experimental. They are different tasks; no demonstrated latency or generalization claim should be inferred from a proposed architecture.
 
 ### 6.2 Dataset
 
-| Item | Specification |
-|---|---|
-| Base table | `gnn_simulated_scenarios.parquet`: 337 scenarios × 279 edges = **94,023 rows**, 22 columns |
-| Scenario grid | every lane and chokepoint (79 edges) at throttle 0 / 0.25 / 0.5 / 0.75 = 316, plus 5 compound cases × 4, plus baseline |
-| Node features (6) | `is_port`, `is_junction`, `lat_norm`, `lon_norm`, `export_bbl_norm`, `import_bbl_norm` |
-| Edge features (11) | type flags (lane / chokepoint / connector), `length_nm_norm`, `free_flow_days_norm`, `capacity_weekly_norm`, `toll_usd_per_bbl`, `throttle_factor`, `baseline_volume_norm`, `baseline_transits_norm`, `baseline_utilization` |
-| Targets (4) | `oil_volume_bbl`, `tanker_transits`, `utilization`, `delay_days` |
-| Fine-tuning | `chokepoint_weekly_attributes.parquet`, masked to chokepoint edges |
-| Holdouts | Ever Given, Panama, Red Sea Mar–Jun 2024; normalisation fitted on training data only |
+337 simulator scenarios contain 94,023 edge rows. The new trainer holds out all 20 compound cases and splits 317 single/baseline cases into 254 train and 63 validation cases. Temporal training uses six node and fourteen edge slots, including three strictly lagged observed transit summaries; solver OD and current tariffs are excluded from real-only inputs. Feature meanings differ between pretraining and temporal mode. The old G1 bundle excludes event dates but includes later history, so use `train_gnn.py` for chronological tests.
 
 ### 6.3 Model
 
-```
-h_node0 = MLP_node(X_node)
-h_edge0 = MLP_edge(X_edge)
-
-for l in 1..3:
-    h_node = LayerNorm(h_node + ReLU(Linear(aggregate(incoming edge messages))))
-    h_edge = LayerNorm(h_edge + MLP([h_node_u, h_node_v, h_edge]))
-```
-
-Edge-centric because predictions live on edges. Three layers give a three-hop receptive field, enough
-for a Suez shock to reach the Gulf.
-
-- **Head 1:** four edge targets through `Softplus`; `oil_volume_bbl = 0` wherever `throttle_factor = 0`.
-- **Head 2:** mean + max pooling over edge states → 8-value graph embedding.
+Plain PyTorch, three bidirectional endpoint-aggregation layers and 32 hidden units in the executed trainer. Four nonnegative edge heads and an eight-coordinate pooled graph summary. Closed-edge volume/transits are masked to zero. The embedding projection itself has no separate training loss.
 
 ### 6.4 Training and outputs
 
-| Loss | Definition |
-|---|---|
-| Regression | Huber on scaled targets — robust to a handful of huge chokepoint values |
-| Physics | flow conservation at every non-port junction: Σ in = Σ out |
-
-Two stages: pretrain on 337 simulated scenarios, fine-tune on observed chokepoint weeks with the
-masked loss. Outputs: `gnn_edge_predictions.parquet` (22-column contract, `source = gnn`) and
-`gnn_embeddings.parquet`.
+Huber loss on scaled targets; only observed transits contribute to real-data loss. No signed conservation loss is applied to combined two-way edge labels. Seeds 7/19/43 are averaged, with validation early stopping. The 22-column `gnn_edge_predictions.parquet` is simulator-only, before temporal fine-tuning. `gnn_temporal_predictions.parquet` and `gnn_price_embeddings.parquet` are separate products.
 
 ### 6.5 Evaluation
 
-Score solver, GNN and an ARIMA/LSTM baseline on the same edges and weeks, with the metrics from §5.3.
-Acceptance: physics numbers must reproduce `validation_report.csv` exactly; if they do not, the
-comparison is broken, not the solver. Two columns are reported separately — synthetic accuracy and
-held-out real events.
+Real-only and mixed forecast MAPE across 440 pairs is 12.18% and 12.77%. Mixed RMSE improves on persistence for Ever Given/Panama, but both GNN modes lose on Red Sea. Baselines are persistence and seasonal, not ARIMA/LSTM. Synthetic transits have 17.10% WAPE on held-out compounds; that average hides a major Hormuz feasibility failure: full closure strands only about 0.29 million bbl/week by the surrogate connector residual, versus 30.75 million in the router. Zero Hormuz flow is enforced by a mask. Do not present the surrogate as physically reliable.
 
 ---
 
-## 7. Price model — Planned
+## 7. Price model — Implemented observational regression
 
 ### 7.1 Shipping cost per barrel
 
-```
-edge_days             = free_flow_days + delay_days
-edge_cost_per_bbl(r)  = edge_days × r / barrels_per_ship + toll_per_bbl
-```
-
-At r = $35k / $50k / $75k per day. The three values are a freight uncertainty band, not a forecast.
-The war-risk premium is not in this formula yet: the flow model charges it as a separate
-`awrp_per_bbl`, so a Red Sea scenario's freight cost and its total route cost differ by $0.41–$0.83.
-Fleet cost is barrel-weighted across edges; scenario values are changes against baseline.
+`edge_cost = (free_days + delay_days) * charter_rate / edge_cargo + toll`. Cargo comes from volume/transits where active. Baseline toll recovery subtracts both sailing and delay. Fleet cost sums edge flow times edge cost and divides by served barrels (half the connector-volume sum). $35k/$50k/$75k rates are assumptions, not statistical confidence intervals. The explicit routing war-risk penalty is not added as a separate measured freight charge.
 
 ### 7.2 Three indices, one function
 
-```
-suez_tanker_share     = suez / (suez + cape)
-avg_voyage_days       = Σ(barrels × days) / Σ(barrels)
-rerouted_barrel_miles = Σ(|delta_volume| × length_nm) / 1e9
-```
-
-Identical columns for history and scenarios, joined to `eia_brent_weekly.parquet`.
+Observed history supplies Suez/(Suez+Cape) tanker share. Historical global route days, rerouted work and freight costs remain missing. Scenario voyage days use the served-barrel denominator; absolute changed edge barrel-miles are an activity index, not net extra OD distance. Scenario shares map crude percentage responses onto observed tanker baselines before taking their ratio.
 
 ### 7.3 Brent model
 
-Oil prices are near a random walk week to week, so the model includes lagged price (`brent_lag1`,
-`brent_ma4`) and lets network features explain the deviation: `delta_cost_per_bbl_base`,
-change in `suez_tanker_share`, extra voyage days, `rerouted_barrel_miles`, optionally PCA-compressed
-`gnn_emb_*`.
-
-Mean: ARX / Ridge. Range: quantile regression at the 5th and 95th percentiles. Outputs
-`pred_brent_mean`, `pred_brent_lower_90`, `pred_brent_upper_90`, plus a decomposition into freight
-surcharge and supply-risk premium.
+NumPy Ridge predicts a correction to lagged price from lagged price, price-average gap, lagged Suez share and lagged share change. Optional frozen GNN summaries add eight features. Historical route costs and stranded supply are not regressors. There is no causal freight/supply-risk decomposition. Residual calibration replaces planned quantile regression.
 
 ### 7.4 Backtest
 
-Train 2019-01 → 2023-10; test 2023-11 → 2024-06, one week ahead. Four models on the same weeks:
-random walk, AR(1), Blue Vector with physics indices, Blue Vector with GNN embeddings. Report RMSE,
-MAE, directional accuracy, interval coverage. Matching a random walk is a real result; beating it
-badly on four weeks is probably luck.
+204 common fit weeks through December 2022, 43 calibration weeks in January–October 2023, 35 test weeks November 2023–June 2024. Network RMSE $2.400 vs random walk $2.463; improvement 2.6%, with a bootstrap difference interval crossing zero. Current-vintage scenario calibration includes 2026 and cannot be reused as untouched Hormuz holdout calibration. The price model has no direct Hormuz or supply-loss input; a closure's small indirect price change is not a meaningful supply-shock estimate.
 
 ---
 
@@ -715,7 +603,7 @@ badly on four weeks is probably luck.
 |---|---|---|
 | Red Sea preset | `suez = 0.35`, `babalmandab = 0.35` | `suez = 0.85`, `babalmandab = 0.85`, $1.25/bbl war-risk premium (`red_sea_throttle`, `red_sea_war_risk_per_bbl`) |
 | Default BPR sliders | α 0.18, β 3.8 | α 0.12, β 3.0 |
-| Baseline Suez share shown in the KPI delta | hardcoded 0.611 | 0.5824 |
+| Baseline Suez share shown in the KPI delta | hardcoded 0.611 | current raw crude share 0.5835; observed-equivalent share is a different population |
 | Slider semantics | "0 = closed, 1 = open" | same fraction-of-throughput meaning; the presets are what is wrong |
 
 The dashboard intentionally shows physical metrics only (Deliverables 3–4). Price belongs to
@@ -752,29 +640,21 @@ model's check that a true single point of failure behaves like one.
 
 ## 10. Limits
 
-1. **One Red Sea intensity per window.** One sourced premium fits H1 (share error 0.0145) and misses
-   H2 (0.089); the crisis deepened and a time-varying premium is not implemented.
-2. **Displaced traffic is the weak spot.** Cape +37.7 % modelled against +68.8 % observed in H1, and
-   +65.0 % against +123.2 % in H2. Partly the crude-only basis, partly that real operators
-   redeployed more capacity than a cost-minimising router does.
-3. **Ever Given overshoots the Cape** — +79 % modelled against +5.7 % observed — because the throttle
-   lasts a full week against a six-day blockage and the model has no time dimension.
-4. **Congestion is inert.** At the observed `capacity_proxy`, utilisation is 0.33 at Suez, so α and β
-   cannot move a route. The curve is in the model because DELIVERABLE4 requires it, not because it
-   decides anything.
-5. **Lane closures are a graph-resolution artifact** — a natural detour would cut through a port,
-   which the port rule forbids — so lanes are ranked separately.
-5. **Capacity is statistical.** Only throttled edges get a hard ceiling; a real canal also has a
-   draft limit represented here only through observed vessel sizes.
-6. **Demand is static.** No price elasticity, no origin substitution, no newbuildings.
-7. **Ports do not queue.** They are endpoints with no congestion of their own.
-8. **Crude share is a group assumption** (0.8511), not a measurement, and applies to all ports.
-9. **No GFW file in `data/`**, so transit-time validation is limited to the corridor benchmark.
-10. **Dashboard presets do not match the calibrated parameters** (§8.2).
+- Retained H1 calibration misses its share target; historical model selection was retrospective.
+- A constant Red Sea setting cannot reproduce all phases or independently validate unobserved diverted flows.
+- Demand is static; no new pipeline export reallocation, inventories, production substitution, or price elasticity is represented. Hormuz's 21.23% stranding is a share of modeled demand, not world supply.
+- Panama baseline utilization is 3.2666 and delay 5.8731 days; these expose assumptions, not measured queues. Vessel-size and port-congestion restrictions remain incomplete.
+- Coarse lane closures can exaggerate detours, so they remain separate sensitivity rows.
+- No GFW voyage sample was reproduced; the corridor diagnostic has a routing-rule mismatch.
+- The surrogate fails Hormuz cargo feasibility even on a pretraining case. Its zero closure flow is a mask, not a learned proof.
+- The price model does not identify a supply-risk premium; its 2026 scenario interval calibration is not a fresh Hormuz holdout.
+- Dashboard defaults/presets do not match retained model settings; GNN and price outputs are not integrated into its physical-only view.
 
----
+See [the complete dated audit](MODEL_METHODOLOGY.md#15-methodology-audit-and-hormuz-readiness).
 
 ## 11. Presentation plan
+
+The interface panels below are presentation ambitions, not a claim of completed integration. Use the current audited scorecards and state the scenario/forecast distinction.
 
 Two flowcharts, two panels. This is the order that makes the dependencies visible: data →
 representation → demand → physics → evidence → learning → money → product.
@@ -787,20 +667,20 @@ representation → demand → physics → evidence → learning → money → pr
 | A2 Graph | What is the network? | 142 nodes / 279 edges diagram, port + edge attribute cards | 10 chokepoints, 69 lanes, 200 connectors | `config/nodes.csv`, `config/edges.csv` |
 | A3 Attribute equations | How is each attribute computed? | equation per field, with its source column | `capacity_proxy` = P95; `min_transit_days` = length/(14×24) | `edges.csv` |
 | A4 Graph checks | Can the graph be trusted? | 33 checks, 32 pass, 1 warn | 8 long-snap edges | `config/validation_results.csv` |
-| A5 OD matrix | Who sends crude to whom? | port total → share → seed → IPF | 5,380 pairs, 12.11 G bbl/yr, gap < 1e-6 | `data/interim/od_matrix.csv` |
-| A6 Crude share | Why 0.8511? | before/after table with the >1 ratios | Malacca 1.044, Hormuz 1.202 → 0.8511 | `data/interim/crude_share.csv` |
-| A7 Flow model | How does a closure propagate? | 6-step solve diagram, cost equation | 151,748,398 bbl/wk; 0 stranded | `FLOW_MODEL.md` |
-| A8 Validation | How wrong is it? | H1/H2 split, event scorecard, corridor check | share error 0.0145; H2 0.089; extra days 0.85 | `validation_report.csv` |
+| A5 OD matrix | Who sends crude to whom? | port total → share → seed → IPF | 5,380 pairs, 7.552 G bbl/yr, gap < 1e-6 | `data/interim/od_matrix.csv` |
+| A6 Crude share | Which population does the share describe? | historical correction, current explicit assumption | port share 0.53; per-chokepoint values differ | `data/interim/crude_share.csv` |
+| A7 Flow model | How does a closure propagate? | 6-step solve diagram, cost equation | 144,826,807 bbl/wk; 0 stranded | `FLOW_MODEL.md` |
+| A8 Validation | How wrong is it? | dated event scorecard and audit limitations | flow MAE 23.628 / 16.233 / 22.160; H1 calibration target unmet | `validation_report.csv` |
 
 ### 11.2 Flowchart B — "Learning → money → product"
 
 | Panel | Answers | Show | Numbers to quote | Artifact |
 |---|---|---|---|---|
 | B1 Training data | What does the GNN learn from? | 337 scenarios, grid diagram, row count | 94,023 rows, 4 targets | `gnn_simulated_scenarios.parquet` |
-| B2 GNN | Why a graph network? | 3 message-passing layers, two heads | 6 node / 11 edge features, 8-dim embedding | `DELIVERABLE5.md` §5 |
-| B3 GNN scoring | Does it beat the solver? | solver vs GNN vs ARIMA table, two columns | same metrics as A8; synthetic vs held-out | `gnn_evaluation_report.csv` (planned) |
-| B4 Price | How does the network become money? | cost formula, 3 rates, 3 indices | $35k / $50k / $75k per day | `network_price_features.parquet` (planned) |
-| B5 Price test | Does it beat a random walk? | 4 models, 2023-11 → 2024-06 | RMSE, MAE, direction, coverage | `price_backtest_report.csv` (planned) |
+| B2 GNN | Why a graph network? | 3 message-passing layers, two heads | 6 node / 14 edge features, 8-dim embedding | `DELIVERABLE5.md` §5 |
+| B3 GNN scoring | Does it beat the solver? | conditional solver versus temporal GNN caveat; persistence/seasonal baselines | same metrics as A8; synthetic vs held-out | `gnn_evaluation_report.csv` |
+| B4 Price | How does the network become money? | cost formula, 3 rates, 3 indices | $35k / $50k / $75k per day | `network_price_features.parquet` |
+| B5 Price test | Does it beat a random walk? | 4 models, 2023-11 → 2024-06 | RMSE, MAE, direction, coverage | `price_backtest_report.csv` |
 
 ### 11.3 Panel C — Real-world closures
 
@@ -829,8 +709,8 @@ representation → demand → physics → evidence → learning → money → pr
 3. **OD** — country trade split to ports, fitted to PortWatch marginals.
 4. **Physics** — dollars per barrel, ten loading passes, BPR congestion, strand what cannot move.
 5. **Validation** — fitted on H1, scored on H2 and two more events; every error is published.
-6. **GNN** — learns the solver, then is judged on real events, not on its own training set.
-7. **Price** — freight cost and three network indices, honest intervals, random-walk baseline.
+6. **GNN** — separate simulator imitation and real temporal forecasting; disclose Hormuz feasibility failure.
+7. **Price** — separate freight calculations from lagged observed-share forecasting; disclose uncertain skill and unidentifiable causal effects.
 8. **Product** — a map where a user closes an edge and sees the world re-route.
 
 ---
@@ -842,12 +722,12 @@ representation → demand → physics → evidence → learning → money → pr
 | Path | Contents |
 |---|---|
 | `config/nodes.csv` | 142 nodes, 28 columns |
-| `config/edges.csv` | 279 edges, 36 columns |
-| `config/edges_core.csv` | 79 lanes + chokepoints (no connectors), 31 columns |
+| `config/edges.csv` | 279 edges, 32 columns |
+| `config/edges_core.csv` | 79 lanes + chokepoints (no connectors), 29 columns |
 | `config/flow_params.json` | calibrated parameters and fit diagnostics |
 | `config/validation_results.csv` | 33 graph checks |
 | `data/interim/od_matrix.csv` | 5,380 pairs, barrels per year |
-| `data/interim/crude_share.csv` | global default + 5 diagnostic chokepoint ratios |
+| `data/interim/crude_share.csv` | global default + 6 reference chokepoint ratios |
 | `data/processed/scenario_edge_flows.parquet` | 4 scenarios × 279 edges |
 | `data/processed/gnn_simulated_scenarios.parquet` | 337 × 279 = 94,023 rows |
 | `data/processed/validation_targets.csv` | observed event windows |
@@ -903,7 +783,7 @@ model output kept in version control, so both halves of Deliverable 5 work from 
 - baseline stranded = 0;
 - no negative volumes;
 - a closed edge carries zero flow;
-- Suez share still near 0.5824 at baseline / 0.4395 in the Red Sea scenario.
+- Raw crude Suez share near 0.5835 baseline / 0.4407 Red Sea in this run; observed-equivalent price shares differ.
 
 ---
 

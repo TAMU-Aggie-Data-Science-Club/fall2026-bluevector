@@ -1,5 +1,8 @@
 # 🕸️ Third Deliverable: Graph Build + OD Matrix
 
+> **Original assignment specification:** proposed features, acceptance goals and illustrative figures below are not a certification that they were implemented or achieved. For audited current behavior/results, use [MODEL_METHODOLOGY.md](../MODEL_METHODOLOGY.md), including its Hormuz readiness section.
+
+
 **📅 Due: Tuesday, November 3, 2026**
 
 ## 🎯 What this is
@@ -161,7 +164,7 @@ This deliverable uses issue 3 and the integration branch `issue-3/integration`. 
 | 🧭 Graph | `issue-3/graph` | 
 | 🛢️ OD matrix | `issue-3/od-matrix` | 
 
-Everyone pushes to the group's branch (pull before you push), and **one person per group** opens a pull request into `issue-3/integration`. See [`GITHUB_GUIDE.md`](GITHUB_GUIDE.md).
+Everyone pushes to the group's branch (pull before you push), and **one person per group** opens a pull request into `issue-3/integration`. See [`GITHUB_GUIDE.md`](../GITHUB_GUIDE.md).
 
 ## ✅ Done checklist
 

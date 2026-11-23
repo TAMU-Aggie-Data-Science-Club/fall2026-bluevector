@@ -7,6 +7,8 @@ how the parameters were fitted, and how it performs against real disruptions.
 Read [`deliverables/DELIVERABLE4.md`](deliverables/DELIVERABLE4.md) for the assignment itself and
 the shared column contract. This file documents what we actually built.
 
+> **Audit, 2026-11-22:** current rebuilt-demand figures below supersede earlier examples. Existing calibration metadata is historical, not a fresh fit to this OD matrix. See [Hormuz readiness](MODEL_METHODOLOGY.md#15-methodology-audit-and-hormuz-readiness) before using scenario outputs as real-world predictions.
+
 ## 1. Why it exists
 
 The dashboard has to answer a concrete question: if a canal is closed or throttled, where does the
@@ -25,7 +27,7 @@ route demand over the network ourselves. The same model does three jobs:
 | Input | Where | What it is |
 |---|---|---|
 | `config/nodes.csv` | Deliverable 3 | 100 ports plus 42 open-sea junction nodes |
-| `config/edges.csv` | Deliverable 3 | 279 edges: 10 chokepoints, 69 lanes, 200 port connectors. Each carries length, a capacity proxy, a toll, and the observed vessel size |
+| `config/edges.csv` | Deliverable 3 | 279 edges: 10 chokepoints, 69 lanes, 200 port connectors. Each carries length, a capacity proxy, a toll, and an estimated carrying-capacity proxy |
 | `data/interim/od_matrix.csv` | Deliverable 3 | Port-to-port crude oil demand in barrels per year, from Comtrade scaled to PortWatch port totals |
 | `config/flow_params.json` | Deliverable 4 | Speed, congestion curve, ship economics, and calibrated Red Sea parameters |
 
@@ -35,8 +37,7 @@ Everything runs on a **one-week time step**, so demand is converted once, at loa
 barrels_per_week = barrels_per_year / 52.1429
 ```
 
-Weekly units are what PortWatch reports for chokepoints, so the model and the data we validate
-against are in the same clock.
+PortWatch inputs are daily and are aggregated into weekly counts; this aligns the model and validation clock.
 
 ## 3. How one solve works
 
@@ -64,9 +65,7 @@ chokepoint (queue and convoy), and the sailing time itself on open water. The ch
 queue time, not the length of the segment, because a 400 nm lane has a 1.3 day base: congestion
 priced against sailing time is nearly free, and routes then never avoid a busy corridor.
 
-`barrels_per_ship` is taken from Deliverable 3 where the chokepoint has an observed vessel size
-(from PortWatch average vessel tonnage converted to crude barrels, clipped to 250k–2.2M barrels), and one
-million barrels otherwise.
+`barrels_per_ship` uses `avg_vessel_size_tonnes * 7.33` when that carrying-capacity proxy exists. Only the alternative oil-volume/transit fallback is clipped to 250k–2.2M barrels; otherwise the default is one million. The primary proxy is neither observed vessel dimensions nor measured loaded crude, and physical vessel-size restrictions are incomplete.
 
 **Step 3 — load demand in ten passes.** Cheapest paths come from Dijkstra's algorithm, one
 single-source run per origin port that returns the best path to every destination at once (NetworkX
@@ -88,10 +87,10 @@ congestion curve, because their capacity proxy is a 95–99th percentile of hist
 physical wall; ships really do surge past it, as the Cape did in 2024.
 
 **Step 5 — record.** Demand that finds no path at all is counted as **stranded**. Closing Hormuz
-completely strands about 21 % of global crude demand, which is the model's check that a true
+completely strands about 21.2% of this modeled network's crude demand, which is the model's check that a true
 single point of failure behaves like one.
 
-A solved network routes 151,748,398 barrels per week across 5,380 port pairs in the baseline, with
+A solved network routes 144,826,807 barrels per week across 5,380 port pairs in the baseline, with
 zero stranded barrels and no negative flows.
 
 ## 4. What a throttle means
@@ -107,20 +106,18 @@ capacity_weekly = capacity_proxy * crude_share                when open
 throttle_factor = capacity_weekly / (capacity_proxy * crude_share)   (reported, 0..1)
 ```
 
-Open capacity is PortWatch's proxy on the crude share of that corridor's own tanker volume: 187.5
-tanker slots per week at Suez, of which crude is 0.49, so 91 crude transits. Capacity and flow are
+Open capacity uses PortWatch's proxy on the corridor crude basis: Suez's 187.5 tanker slots become about 91 crude-equivalent slots under the configured edge attributes. Capacity and flow are
 both crude, and capacity stays an observation — nothing in it is derived from what the model routes.
 (It used to be re-based by the model's own first-pass output, which made utilisation identically
 `observed ÷ proxy` and moved whenever the solver changed.)
 
-A throttle is applied to measured crude throughput rather than to that capacity, because the proxy
+A throttle is applied to modeled baseline crude throughput rather than to that capacity, because the proxy
 counts **all tankers** while the pulled crude flow is about 32 transits per week. A throttle applied
 to the proxy leaves a ceiling far above the crude that actually uses the edge, so the cut does not
 bind: halving 91 still leaves 45 slots against 32 transits of demand.
 
 The reported `throttle_factor` is converted back onto the Deliverable 3 basis so the column keeps
-the units the shared contract defines. At Suez, a throttle of 0.85 leaves 0.85 × 32.5 ≈ 27.6 crude
-transits per week, reported as `throttle_factor` ≈ 0.30 of the 91 crude-transit capacity.
+the units the shared contract defines. At Suez, 0.85 × 31.139 ≈ 26.47 crude-equivalent slots/week, reported as `throttle_factor` ≈ 0.291 of the 91-slot open proxy. Actual solved traffic can be below that ceiling.
 
 Edges that carried no crude at baseline fall back to `throttle * capacity_weekly`, so a throttled
 but unused edge is never reported as closed while still carrying flow.
@@ -152,13 +149,12 @@ Results against the baseline:
 
 | Scenario | Suez transits | Suez/(Suez+Cape) share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 32.5 | 0.5824 | 0 |
-| Red Sea 2024 | 22.6 | 0.4395 | 0 |
-| Ever Given 2021 | 3.9 | 0.0867 | 0 |
-| Panama drought 2023 | 32.5 | 0.5829 | 0 |
+| baseline | 31.139 | 0.5835 | 0 |
+| Red Sea 2024 | 21.724 | 0.4407 | 0 |
+| Ever Given 2021 | 3.779 | 0.0875 | 0 |
+| Panama drought 2023 | 31.188 | 0.5839 | 0 |
 
-The Panama scenario barely moves Suez, which is correct: a canal on the other side of the world
-should not change Red Sea traffic. Its effect is on the Panama edge itself (19.5 → 15.3 transits,
+The Panama scenario barely moves Suez, under the current static routing assumptions; this is not a universal claim about global fleet responses. Its effect is on the Panama edge itself (19.5 → 15.3 transits,
 about −21 %), an edge that already sits at 325 % of its observed crude capacity at baseline — the
 router sends crude through Panama that a vessel-size limit would forbid (section 8).
 
@@ -179,75 +175,51 @@ loss = |suez_pct_model - suez_pct_observed| / 100
 only. March–June 2024 (H2) is never used to choose anything, so scoring it is a real out-of-sample
 test rather than a fitted number dressed up as validation.
 
-Fitted values: alpha 0.12, beta 3.0, Red Sea throttle 0.85, war-risk $1.25/bbl. The scenario carries
-one throttle for both windows and therefore produces one share: 0.4395. That is 0.1017 from H1's
-0.5412 — outside the 5 % target — and 0.0228 from held-out H2's 0.4167.
+Retained settings are alpha 0.12, beta 3.0, throttle 0.85 and war-risk $1.25/bbl. The `config/flow_params.json` loss/share fields describe an earlier calibration vintage (H1 share error 0.1017, target unmet), not newly reproduced fit metrics. Current rebuilt output has crude Suez share 0.4407 versus observed 0.5412 in H1 and 0.4167 in H2. Those raw crude/all-tanker share comparisons also mix populations; the newer price feature path maps percentage responses onto observed tanker baselines before forming a share.
 
-The asymmetry is the honest result rather than a tuning failure: a constant cannot separate two
-windows whose observed shares are 0.124 apart. Re-running the grid on the current capacity basis
-picks throttle 0.90 and $2.00/bbl, which slides the same constant to 0.4097 — H1 error 0.1315, H2
-error 0.0070, total error 0.133 either way — while pushing Ever Given MAE from 23.8 to 28.4. It is
-not committed for that reason.
+The grid function selects on H1, but earlier parameter-retention notes explicitly considered Ever Given/H2 performance when retaining settings. The historical cases are consequently retrospective assessments, not a pristine untouched final test. A new crisis evaluation must freeze settings before its test dates. No recalibration was performed during this audit.
 
 ## 8. What is validated, and how
 
 The model counts **crude only**. PortWatch counts **all tankers**. Comparing the two levels directly
 would produce a permanent error of roughly 2.5×, so validation compares percentage shifts: the
 model's change is applied to the observed pre-event level, and that implied level is compared with
-the observed crisis level. Every reported error is therefore about direction and relative size, not
-about absolute transit counts.
+the observed crisis level. The reported transit errors are absolute errors in the implied all-tanker level after this relative-response mapping; they are not direct errors between raw crude and all-tanker counts.
 
-Scored events are held out from calibration: Red Sea H2, the Ever Given peak week (23–29 March
+The intended assessment windows, subject to the retrospective-selection qualification above, are: Red Sea H2, the Ever Given peak week (23–29 March
 2021), and the Panama drought. All 10 priority chokepoints are evaluated across all events.
 
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pct points) |
 |---|---|---|---|---|---|
-| Red Sea H2 | 22.2 | 30.1 | 0.177 | 0.8 | 18.4 |
-| Ever Given peak | 23.8 | 31.9 | 0.236 | 0.8 | 21.0 |
-| Panama drought | 16.8 | 23.2 | 0.120 | 0.7 | 13.7 |
+| Red Sea H2 | 22.160 | 30.1153 | 0.1772 | 0.8 | 18.44 |
+| Ever Given peak | 23.628 | 31.7936 | 0.2342 | 0.8 | 20.91 |
+| Panama drought | 16.233 | 23.0396 | 0.1118 | 0.7 | 13.00 |
 
 Every single event meets the acceptance criterion of **MAE < 25 transits off reality**, and MAPE
-averages 17.7 % across the three.
+averages 17.44% across the three event-average MAPE values; this is not a universal accuracy score.
 
-One capacity consequence shows up at baseline and belongs here rather than in a footnote. Crude is a
-small share of Panama's tanker traffic (0.94M bbl/wk against 89 tankers, a 0.058 share), so observed
-crude capacity there is about 6 transits/wk while the router sends 19.5 — **325 % utilisation and 6.3
-days of queue at a canal nobody is queueing at**. That is an OD/routing error, not a capacity error:
-the router sends crude through Panama that a vessel-size limit would forbid. It was invisible while
-capacity was re-based to the model's own output, because the re-basing scaled the pipe to whatever
-the router chose to send.
+A baseline limitation is Panama utilization of 3.2666 and modeled delay of 5.8731 days. That exposes imperfect OD/cargo-size/capacity assumptions and incomplete physical vessel restrictions; the data do not establish that real ships experienced this queue.
 
 ### Voyage time check
 
-One corridor has a published benchmark: Persian Gulf to Rotterdam, 19 days via Suez and about 35
-days via the Cape (EIA, February 2024, laden Suezmax at 14 knots). The model gives 21.32 and 38.56
-days, so the extra time is 17.24 days against 16.0, an error of 1.24 days (well within the 2.0-day
-tolerance). Two structural controls (Gulf to Asia, Houston to Rotterdam) show zero extra time
-(error < 0.02 days); they confirm that Red Sea traffic does not leak into unrelated lanes.
+`validate_gfw_delays.py` compares an assumed full Red Sea closure with a published corridor benchmark and structural controls. Despite its filename, it does not read real GFW voyage observations. It builds an undirected graph without the router's split-port restriction, so it can use paths the shipping router forbids. No fresh corridor result was reproduced in this audit. Earlier corridor numbers are historical diagnostics, not independent ship-level validation or proof of routed-OD delay accuracy.
 
 ## 9. Current errors and limits
 
 Read these as the model's honest boundaries.
 
-- **The Red Sea intensity is one number, and the crisis got worse over time.** A single calibrated
-  throttle reproduces the H1 share almost exactly and misses H2 by 0.129, because diversions deepened
-  through the spring. A time-varying throttle would fit better and is not implemented.
-- **The model under-predicts the Cape surge.** In H1 it predicts +43 % Cape transits against +69 %
-  observed; in H2, +43 % against +123 %. Part of that is the crude-only basis, part is that real
-  operators redeployed more capacity than a cost-minimizing router does.
-- **Ever Given overshoots.** The canal is throttled to one seventh for a whole week, while the real
-  blockage cleared after six days, so the modeled drop (−87 % Suez) is deeper than observed (−76 %).
-- **Displaced traffic is the weak spot, not the disrupted canal.** Under the Panama drought the model
-  gets the canal right (−30 % vs −26 %) but sends almost nothing to the Cape, where reality added
-  51 %.
+- **Red Sea intensity changes over time.** One throttle/surcharge does not reproduce every phase; current H1 share calibration misses its target. All-tanker versus crude populations add interpretation limits.
+- **Displaced traffic remains imperfect.** Event-average transit errors do not establish correct rerouting, voyage delays or oil volumes on unobserved edges.
+- **Ever Given is represented by one blocked week.** It cannot capture the exact shutdown/reopening chronology or backlog dynamics.
+- **Hormuz has no modeled sea bypass.** Closure strands 30.75 million bbl/week (21.23% of the modeled demand), not 21.23% of world supply. New pipeline-export reallocation, inventories, production substitution and demand response are absent. The GNN surrogate severely fails this stress case; see the dated audit.
 - **Lane closures are a graph-resolution artifact.** A 1,000 nm lane is a single edge, and the short
   natural detour around it runs through a port, which the port rule forbids. Closing such a lane
   therefore reports a large detour. Lane closures are kept in
   `data/processed/edge_criticality.csv` but labelled `rank_scope = lane_sensitivity` and sorted
   below the physical chokepoints instead of competing with Hormuz and Suez.
 - **Capacity is statistical.** The proxy comes from historical percentiles, which is why only
-  throttled edges get a hard ceiling. A real canal also has a physical draft limit that the graph
-  represents only through the observed vessel sizes.
+  throttled edges are removed between loading increments at a saturation threshold; a pass can overshoot capacity. A real canal also has a physical draft limit that the graph
+  represents only through an estimated carrying-capacity proxys.
 - **Demand is static.** No price elasticity, no substitution between origins, no newbuilding
   response. Every scenario reroutes a fixed weekly demand.
 - **Port congestion is not modeled.** Ports are endpoints with no queue of their own.
@@ -258,7 +230,7 @@ From the repository root, in this order (later scripts read what earlier ones wr
 
 ```bash
 python scripts/validation/validation_targets.py    # observed targets, incl. H1/H2 split
-python scripts/validation/calibrate_flow.py        # writes config/flow_params.json
+python scripts/validation/calibrate_flow.py        # OPTIONAL NEW FIT: overwrites retained config; not reproduction of fixed results
 python scripts/flow_model/flow_solver.py           # baseline raw flows
 python scripts/flow_model/edge_metrics.py          # baseline contract table
 python scripts/flow_model/scenario_engine.py       # historical events + criticality ranking
@@ -267,11 +239,10 @@ python scripts/validation/validate_events.py       # scorecard
 python scripts/validation/validate_gfw_delays.py   # voyage-time check
 ```
 
-Calibration takes about two minutes; the scenario engine about twenty seconds; the GNN generator about
-four minutes on eight workers. All outputs land in `data/`, which is never committed.
+Run time depends on input size, machine and worker count; earlier timings are not guaranteed. Reproducing the fixed snapshot should preserve config and skip recalibration. All outputs land in `data/`, which is never committed.
 `config/flow_params.json` is the one output that belongs in version control, so both groups work from
 the same numbers.
 
-Sanity checks: routed plus stranded barrels equal the OD total (151,748,398 bbl/wk), baseline
+Sanity checks: routed plus stranded barrels equal the OD total (144,826,807 bbl/wk), baseline
 stranded is zero, no volume is negative, a closed edge carries no flow, and all three validation
 events achieve MAE < 25 transits/wk.
