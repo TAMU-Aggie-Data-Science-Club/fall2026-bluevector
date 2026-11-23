@@ -101,9 +101,7 @@ def calibrate() -> dict:
         "No throughput cut in either window."
     )
 
-    best_loss = float("inf")
-    best: dict | None = None
-    best_pred: dict | None = None
+    points: list[tuple[float, float, float, dict]] = []
 
     for alpha in (0.10, 0.12, 0.15):
         for beta in (3.0, 4.0):
@@ -124,12 +122,33 @@ def calibrate() -> dict:
                 f"  alpha={alpha:.2f} beta={beta:.1f} -> Suez {pred['suez_pct']:+.1f}% "
                 f"Cape {pred['cape_pct']:+.1f}% share {pred['share']:.4f} | loss {loss:.4f}"
             )
-            if loss < best_loss:
-                best_loss = float(loss)
-                best_pred = pred
-                best = {"alpha": alpha, "beta": beta}
+            points.append((alpha, beta, float(loss), pred))
 
-    assert best is not None and best_pred is not None
+    losses = [p[2] for p in points]
+    grid_is_flat = (max(losses) - min(losses)) < 1e-9
+    current = json.loads((CONFIG_DIR / "flow_params.json").read_text(encoding="utf-8"))
+    if grid_is_flat:
+        # Every point returns the same answer because congestion never bites at observed utilisation
+        # (the BPR delay is 0.02 days at Suez). Promoting whichever point sorts first would be an
+        # arbitrary claim of calibration, so the config keeps its current alpha/beta and the grid is
+        # reported as unidentified.
+        chosen = next(
+            (p for p in points if p[0] == float(current["alpha"]) and p[1] == float(current["beta"])),
+            points[0],
+        )
+    else:
+        chosen = min(points, key=lambda p: p[2])
+
+    best = {"alpha": chosen[0], "beta": chosen[1]}
+    best_loss, best_pred = chosen[2], chosen[3]
+    assert best_pred is not None
+    if grid_is_flat:
+        print(
+            "Grid is flat: alpha and beta are not identified on this window. Keeping "
+            f"alpha={best['alpha']:.2f}, beta={best['beta']:.1f} from config/flow_params.json."
+        )
+    else:
+        print(f"Grid selects alpha={best['alpha']:.2f}, beta={best['beta']:.1f}.")
 
     # Out-of-sample check on the held-out H2 window, with the H2 premium (a sourced input, so this
     # stays a test of the routing response rather than of the premium).
@@ -144,45 +163,39 @@ def calibrate() -> dict:
     share_error = abs(best_pred["share"] - obs["share"])
     holdout_share_error = abs(holdout_pred["share"] - obs_holdout["share"])
 
-    params = {
-        "speed_knots": 13.0,
-        "alpha": best["alpha"],
-        "beta": best["beta"],
-        "daily_tanker_rate": 50000.0,
-        "daily_tanker_rate_low": 35000.0,
-        "daily_tanker_rate_high": 75000.0,
-        "avg_barrels_per_transit": 1000000.0,
-        "chokepoint_queue_days": 1.0,
-        "max_util_for_delay": 5.0,
-        "n_congestion_iters": 10,
-        # Let utilisation exceed 1.0: the ceiling is a price (queue) instead of a hard wall.
-        "allow_over_capacity": True,
-        # Baseline (pre-crisis) world: no listed area, so no premium.
-        "awrp_usd_per_bbl": 0.0,
-        "risk_passages": [],
-        # Sourced scenario inputs, recorded here so the config alone documents the crisis.
-        "awrp_red_sea_h1_usd_per_bbl": AWRP_RED_SEA_H1_USD_PER_BBL,
-        "awrp_red_sea_h2_usd_per_bbl": AWRP_RED_SEA_H2_USD_PER_BBL,
-        "red_sea_risk_passages": RED_SEA_RISK_PASSAGES,
-        "calibration_window": "2023-12-01..2024-02-29 (Red Sea H1)",
-        "holdout_window": "2024-03-01..2024-06-30 (Red Sea H2)",
-        "calibration_loss": round(best_loss, 4),
-        "calibration_suez_pct_modeled": round(best_pred["suez_pct"], 2),
-        "calibration_suez_pct_observed": round(obs["suez_pct"], 2),
-        "calibration_cape_pct_modeled": round(best_pred["cape_pct"], 2),
-        "calibration_cape_pct_observed": round(obs["cape_pct"], 2),
-        "observed_suez_share_crisis": round(obs["share"], 4),
-        "modeled_suez_share_crisis": round(best_pred["share"], 4),
-        "share_error_abs": round(share_error, 4),
-        "meets_share_target": bool(share_error <= SHARE_TARGET_TOLERANCE),
-        "holdout_suez_pct_modeled": round(holdout_pred["suez_pct"], 2),
-        "holdout_suez_pct_observed": round(obs_holdout["suez_pct"], 2),
-        "holdout_cape_pct_modeled": round(holdout_pred["cape_pct"], 2),
-        "holdout_cape_pct_observed": round(obs_holdout["cape_pct"], 2),
-        "holdout_observed_suez_share": round(obs_holdout["share"], 4),
-        "holdout_modeled_suez_share": round(holdout_pred["share"], 4),
-        "holdout_share_error_abs": round(holdout_share_error, 4),
-    }
+    # Update the config in place rather than rebuilding it: the tariff windows, the cost divisor and
+    # the toll basis are maintained by hand, and a calibration run must not silently drop them.
+    params = json.loads((CONFIG_DIR / "flow_params.json").read_text(encoding="utf-8"))
+    params.pop("chokepoint_queue_days", None)
+    params.pop("allow_over_capacity", None)
+    params.update(
+        {
+            "alpha": best["alpha"],
+            "beta": best["beta"],
+            "awrp_red_sea_h1_usd_per_bbl": AWRP_RED_SEA_H1_USD_PER_BBL,
+            "awrp_red_sea_h2_usd_per_bbl": AWRP_RED_SEA_H2_USD_PER_BBL,
+            "red_sea_risk_passages": RED_SEA_RISK_PASSAGES,
+            "calibration_window": "2023-12-01..2024-02-29 (Red Sea H1)",
+            "holdout_window": "2024-03-01..2024-06-30 (Red Sea H2)",
+            "calibration_grid_flat": bool(grid_is_flat),
+            "calibration_loss": round(best_loss, 4),
+            "calibration_suez_pct_modeled": round(best_pred["suez_pct"], 2),
+            "calibration_suez_pct_observed": round(obs["suez_pct"], 2),
+            "calibration_cape_pct_modeled": round(best_pred["cape_pct"], 2),
+            "calibration_cape_pct_observed": round(obs["cape_pct"], 2),
+            "observed_suez_share_crisis": round(obs["share"], 4),
+            "modeled_suez_share_crisis": round(best_pred["share"], 4),
+            "share_error_abs": round(share_error, 4),
+            "meets_share_target": bool(share_error <= SHARE_TARGET_TOLERANCE),
+            "holdout_suez_pct_modeled": round(holdout_pred["suez_pct"], 2),
+            "holdout_suez_pct_observed": round(obs_holdout["suez_pct"], 2),
+            "holdout_cape_pct_modeled": round(holdout_pred["cape_pct"], 2),
+            "holdout_cape_pct_observed": round(obs_holdout["cape_pct"], 2),
+            "holdout_observed_suez_share": round(obs_holdout["share"], 4),
+            "holdout_modeled_suez_share": round(holdout_pred["share"], 4),
+            "holdout_share_error_abs": round(holdout_share_error, 4),
+        }
+    )
 
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     out_path = CONFIG_DIR / "flow_params.json"

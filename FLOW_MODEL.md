@@ -186,9 +186,14 @@ with no surcharge. The premium is 0.5 % of hull value for H1 and 1 % for H2, whi
 per barrel on the same divisor. Sources, and the values still unconfirmed, are in
 [`DATA.md`](DATA.md).
 
-**Nothing is fitted to the transit counts.** `alpha`/`beta` are the curve's published defaults and no
-grid is searched. No Red Sea throttle is used: Suez stayed open, so the diversion is a price
-response, and treating it as a capacity loss would replay the observation inside the constraint.
+**Nothing is fitted to the transit counts.** `alpha`/`beta` are searched over a small grid
+(0.10–0.15 × 3–4) on the H1 window by `scripts/validation/calibrate_flow.py`, and every point returns
+the same answer: the grid is flat, because at observed utilisation the congestion term cannot move a
+route. The config therefore keeps the curve's published defaults, 0.15 and 4.0, and the run reports
+the grid as unidentified rather than promoting whichever point sorts first.
+
+No Red Sea throttle is used: Suez stayed open, so the diversion is a price response, and treating it
+as a capacity loss would replay the observation inside the constraint.
 
 What the model then does against observation, on definitions that can be recomputed from
 `data/processed/chokepoint_weekly_attributes.csv`:
