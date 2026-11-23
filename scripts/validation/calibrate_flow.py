@@ -95,8 +95,24 @@ def _congestion_grid(scen_params: dict) -> tuple[list, tuple | None, bool, dict]
     default = next((p for p in points if p[0] == 0.15 and p[1] == 4.0), points[-1])
     best = min(points, key=lambda p: p[2])
     flat = best[2] >= default[2] - 0.01
+    alphas = sorted({p[0] for p in points})
+    betas = sorted({p[1] for p in points})
+    # An optimum on the edge of the box says the model wants a penalty larger or smaller than any
+    # congestion curve would supply. That is the router's all-or-nothing response being damped, not a
+    # queue being measured, so it cannot be adopted as a calibrated curve.
+    at_boundary = (
+        best[0] <= min(alphas) + 1e-9
+        or best[0] >= max(alphas) - 1e-9
+        or best[1] <= min(betas) + 1e-9
+        or best[1] >= max(betas) - 1e-9
+    )
+    if at_boundary:
+        print(
+            f"  Ever Given optimum sits on the grid boundary (alpha={best[0]:.2f}, beta={best[1]:.1f}): "
+            "the model wants an unbounded penalty, which is the reroute, not a queue. Not adopted."
+        )
     # Report the prediction of the point that is actually kept, so a flat grid still records numbers.
-    return points, (None if flat else best), flat, obs, default[3]
+    return points, (None if (flat or at_boundary) else best), (flat or at_boundary), obs, default[3], at_boundary
 
 
 def _observed(df: pd.DataFrame) -> dict:
@@ -180,7 +196,21 @@ def calibrate() -> dict:
 
     current = json.loads((CONFIG_DIR / "flow_params.json").read_text(encoding="utf-8"))
     default = next((p for p in points if p[0] == 0.15 and p[1] == 4.0), points[-1])
-    grid_is_flat = min(p[2] for p in points) >= default[2] - 0.01
+    rs_best = min(points, key=lambda p: p[2])
+    rs_alphas = sorted({p[0] for p in points})
+    rs_betas = sorted({p[1] for p in points})
+    red_sea_boundary = (
+        rs_best[0] <= min(rs_alphas) + 1e-9
+        or rs_best[0] >= max(rs_alphas) - 1e-9
+        or rs_best[1] <= min(rs_betas) + 1e-9
+        or rs_best[1] >= max(rs_betas) - 1e-9
+    )
+    grid_is_flat = rs_best[2] >= default[2] - 0.01 or red_sea_boundary
+    if red_sea_boundary and rs_best[2] < default[2] - 0.01:
+        print(
+            f"Red Sea optimum also sits on the grid boundary (alpha={rs_best[0]:.2f}, beta={rs_best[1]:.1f}): "
+            "the two windows want opposite extremes, so the curve is absorbing reroute error. Not adopted."
+        )
     if grid_is_flat:
         # Every point returns the same answer because congestion never bites at observed utilisation
         # (the BPR delay is 0.02 days at Suez). Promoting whichever point sorts first would be an
@@ -204,7 +234,7 @@ def calibrate() -> dict:
         print(f"Red Sea grid selects alpha={best['alpha']:.2f}, beta={best['beta']:.1f}.")
 
     # Calibrate the congestion curve where a queue actually exists, then adopt that point.
-    cg_points, cg_chosen, cg_flat, cg_obs, cg_default_pred = _congestion_grid(scen_params)
+    cg_points, cg_chosen, cg_flat, cg_obs, cg_default_pred, cg_boundary = _congestion_grid(scen_params)
     if cg_chosen is not None:
         cg_alpha, cg_beta, cg_loss, cg_pred = cg_chosen
         print(f"Ever Given grid selects alpha={cg_alpha:.2f}, beta={cg_beta:.2f} (loss {cg_loss:.4f}).")
@@ -247,6 +277,8 @@ def calibrate() -> dict:
             "calibration_grid_flat": bool(grid_is_flat),
             "congestion_calibration_window": f"Ever Given, week {EVER_GIVEN_WEEK.date()}",
             "congestion_grid_flat": bool(cg_flat),
+            "congestion_grid_optimum_on_boundary": bool(cg_boundary),
+            "red_sea_grid_optimum_on_boundary": bool(red_sea_boundary),
             "congestion_calibration_loss": None if cg_flat else round(cg_loss, 4),
             "congestion_suez_pct_observed": round(cg_obs["suez_pct"], 2),
             "congestion_cape_pct_observed": round(cg_obs["cape_pct"], 2),

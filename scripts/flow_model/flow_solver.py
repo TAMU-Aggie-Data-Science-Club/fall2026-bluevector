@@ -219,11 +219,25 @@ def solve_network(
         else:
             bbl_per_ship = default_bbl_per_ship
 
-        # Weekly capacity on the Deliverable 3 statistical basis (unconstrained for lanes/connectors):
-        # PortWatch's capacity_proxy, the 95th percentile of that corridor's weekly tanker transits,
-        # used as observed and never rescaled to the model's own output.
+        # Capacity on the same basis as the flow. PortWatch's capacity_proxy is the 95th percentile of
+        # weekly *tanker* transits, and crude is only part of that -- about half at Suez. Using the
+        # all-tanker figure put utilisation at 0.33 against a corridor observed near 1.0, so the crude
+        # share of that corridor's own tanker volume converts the proxy to crude transits. Lanes and
+        # connectors carry no crude share and keep the proxy as it is.
+        crude_share = 1.0
+        if (
+            pd.notna(e.get("est_oil_volume"))
+            and pd.notna(e.get("weekly_tanker_transits"))
+            and pd.notna(e.get("avg_vessel_size_tonnes"))
+            and float(e.get("weekly_tanker_transits", 0)) > 0
+        ):
+            tanker_bbl = (
+                float(e["weekly_tanker_transits"]) * float(e["avg_vessel_size_tonnes"]) * bbl_per_tonne_crude
+            )
+            if tanker_bbl > 0:
+                crude_share = float(np.clip(float(e["est_oil_volume"]) / tanker_bbl, 0.0, 1.0))
         if pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
-            base_cap_weekly = float(e["capacity_proxy"])
+            base_cap_weekly = float(e["capacity_proxy"]) * crude_share
         else:
             base_cap_weekly = 5000.0
 

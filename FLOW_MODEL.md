@@ -60,9 +60,10 @@ cost_per_barrel = (free_flow_days + delay_days) * daily_tanker_rate / cost_barre
 ```
 
 That is DELIVERABLE4's formula with nothing added. `alpha` 0.15 and `beta` 4.0 are the curve's
-published defaults, not fitted. `capacity_weekly` is PortWatch's `capacity_proxy` on every edge — the
-95th percentile of that corridor's weekly tanker transits, 2019–2023 — used as observed, and never
-rescaled to the model's own output.
+published defaults, not fitted. `capacity_weekly` is PortWatch's `capacity_proxy` — the 95th
+percentile of that corridor's weekly tanker transits, 2019–2023 — multiplied by that corridor's crude
+share of tanker volume, so capacity is counted in crude transits like the flow. It is never rescaled
+to the model's own output.
 
 `barrels_per_ship` is taken from Deliverable 3 where the chokepoint has an observed vessel size
 (estimated oil volume divided by weekly tanker transits, clipped to 250k–2.2M barrels), and one
@@ -155,11 +156,11 @@ Results against the baseline:
 
 | Scenario | Suez transits | Suez/(Suez+Cape) share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 61.5 | 0.9153 | 0 |
-| Red Sea H1 | 20.7 | 0.5155 | 0 |
-| Red Sea H2 | 9.3 | 0.2894 | 0 |
-| Ever Given 2021 | 14.1 | 0.3735 | 0 |
-| Panama drought 2023 | 61.6 | 0.9153 | 0 |
+| baseline | 61.6 | 0.9153 | 0 |
+| Red Sea H1 | 20.7 | 0.4519 | 0 |
+| Red Sea H2 | 8.9 | 0.2234 | 0 |
+| Ever Given 2021 | 14.1 | 0.3376 | 0 |
+| Panama drought 2023 | 61.6 | 0.9154 | 0 |
 
 Only a full closure strands anything: a throttle prices the excess instead of refusing it. The Panama
 scenario barely moves Suez, which is correct — a canal on the other side of the world should not
@@ -188,14 +189,13 @@ per barrel on the same divisor. Sources, and the values still unconfirmed, are i
 
 **Nothing is fitted to the transit counts.** `alpha`/`beta` are grid-searched by
 `scripts/validation/calibrate_flow.py` in two windows: the Red Sea H1 price response (0.10–0.15 × 3–4)
-and the Ever Given capacity event (0.15–1.00 × 3–8), because a price-only window never lifts
-utilisation far enough for the curve to act. Both grids are flat against the DELIVERABLE4 defaults —
-no point improves the loss by a hundredth — so the config keeps 0.15 and 4.0, and the run records the
-grids as unidentified instead of promoting whichever point sorts first.
+and the Ever Given capacity event (0.15–1.00 × 3–8). Both optima land on the edge of the search box
+and point in opposite directions — the Red Sea wants the weakest curve, Ever Given the strongest — so
+the search is measuring the router's all-or-nothing reroute, not a queue. Nothing is adopted: the
+config keeps 0.15 and 4.0 and records both grids as unidentified with their optima on the boundary.
 
-The Ever Given miss that remains is not congestion. The model drops Suez 77.2 % against 43.7 %
-observed and raises the Cape 313.7 % against 5.0 %, and no α/β tested moves either by more than a
-tenth of a point. The blockade forces the Suez fall; the Cape rise is the all-or-nothing reroute.
+The Ever Given miss that remains is the reroute, not congestion: the model drops Suez 77.2 % against
+43.7 % observed and raises the Cape 384.2 % against 5.0 %.
 
 No Red Sea throttle is used: Suez stayed open, so the diversion is a price response, and treating it
 as a capacity loss would replay the observation inside the constraint.
@@ -206,8 +206,8 @@ What the model then does against observation, on definitions that can be recompu
 | Window | Model share | Observed share | Error |
 |---|---|---|---|
 | Baseline (to Oct 2023) | 0.9153 | 0.6279 | +0.287 |
-| Red Sea H1 | 0.5155 | 0.5604 | −0.045 |
-| Red Sea H2 (held out) | 0.2894 | 0.4175 | −0.128 |
+| Red Sea H1 | 0.4519 | 0.5604 | −0.109 |
+| Red Sea H2 (held out) | 0.2234 | 0.4175 | −0.194 |
 
 ### Why the share is a sensitivity, not a validation
 
@@ -245,12 +245,15 @@ passage costs $0.491/bbl, of which $0.444 is the toll, against about $0.43/bbl o
 9.3-day Cape detour. An all-or-nothing shortest path hands the entire split to that margin, which is
 why the baseline share is the largest error in the model.
 
-The observation it is scored against is not the same quantity. PortWatch counts every tanker,
-including ballast, and reports deadweight capacity; the model counts laden crude between 100 ports.
-That is why utilisation sits at 0.33 on Suez while the observed corridor runs near 1.0, and why the
-Cape's 39.7M bbl/wk cannot be set against 3.1M of routed cargo without separating ballast from laden
-and Suezmax parcels from VLCCs. Closing that gap is a vessel-class question, not a price question: a
-laden VLCC cannot transit Suez at all.
+Capacity is on the same basis as the flow. PortWatch's `capacity_proxy` measures all tanker transits,
+so it is multiplied by the corridor's own crude share of tanker volume — 0.49 at Suez — before being
+compared with modelled crude transits. That puts baseline utilisation at 0.68 on Suez against a
+corridor observed near 1.0, instead of the 0.33 the all-tanker figure gave.
+
+The Cape gap is still not a price question, and part of it is not comparable at all. The observed
+39.7M bbl/wk counts every tanker in both directions, ballast included, in deadweight terms, while the
+model routes laden crude between 100 ports. What survives that correction is vessel class: a laden
+VLCC cannot transit Suez, and the model carries one 1M-bbl Suezmax parcel on every pair.
 
 ## 8. What is validated, and how
 
