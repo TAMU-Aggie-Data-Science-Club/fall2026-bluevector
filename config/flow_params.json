@@ -42,5 +42,12 @@
   "holdout_suez_pct_modeled": -84.94,
   "holdout_suez_pct_observed": -43.51,
   "holdout_cape_pct_modeled": 299.49,
-  "holdout_cape_pct_observed": 123.23
+  "holdout_cape_pct_observed": 123.23,
+  "congestion_calibration_window": "Ever Given, week 2021-03-26",
+  "congestion_grid_flat": true,
+  "congestion_calibration_loss": null,
+  "congestion_suez_pct_observed": -43.71,
+  "congestion_cape_pct_observed": 5.01,
+  "congestion_suez_pct_modeled": -77.16,
+  "congestion_cape_pct_modeled": 313.72
 }

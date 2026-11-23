@@ -186,11 +186,16 @@ with no surcharge. The premium is 0.5 % of hull value for H1 and 1 % for H2, whi
 per barrel on the same divisor. Sources, and the values still unconfirmed, are in
 [`DATA.md`](DATA.md).
 
-**Nothing is fitted to the transit counts.** `alpha`/`beta` are searched over a small grid
-(0.10–0.15 × 3–4) on the H1 window by `scripts/validation/calibrate_flow.py`, and every point returns
-the same answer: the grid is flat, because at observed utilisation the congestion term cannot move a
-route. The config therefore keeps the curve's published defaults, 0.15 and 4.0, and the run reports
-the grid as unidentified rather than promoting whichever point sorts first.
+**Nothing is fitted to the transit counts.** `alpha`/`beta` are grid-searched by
+`scripts/validation/calibrate_flow.py` in two windows: the Red Sea H1 price response (0.10–0.15 × 3–4)
+and the Ever Given capacity event (0.15–1.00 × 3–8), because a price-only window never lifts
+utilisation far enough for the curve to act. Both grids are flat against the DELIVERABLE4 defaults —
+no point improves the loss by a hundredth — so the config keeps 0.15 and 4.0, and the run records the
+grids as unidentified instead of promoting whichever point sorts first.
+
+The Ever Given miss that remains is not congestion. The model drops Suez 77.2 % against 43.7 %
+observed and raises the Cape 313.7 % against 5.0 %, and no α/β tested moves either by more than a
+tenth of a point. The blockade forces the Suez fall; the Cape rise is the all-or-nothing reroute.
 
 No Red Sea throttle is used: Suez stayed open, so the diversion is a price response, and treating it
 as a capacity loss would replay the observation inside the constraint.
