@@ -152,14 +152,15 @@ Results against the baseline:
 
 | Scenario | Suez transits | Suez/(Suez+Cape) share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 32.3 | 0.7136 | 0 |
-| Red Sea 2024 | 22.2 | 0.5457 | 0 |
-| Ever Given 2021 | 4.1 | 0.1406 | 0 |
-| Panama drought 2023 | 32.3 | 0.7139 | 0 |
+| baseline | 32.5 | 0.5824 | 0 |
+| Red Sea 2024 | 22.6 | 0.4395 | 0 |
+| Ever Given 2021 | 3.9 | 0.0867 | 0 |
+| Panama drought 2023 | 32.5 | 0.5829 | 0 |
 
 The Panama scenario barely moves Suez, which is correct: a canal on the other side of the world
-should not change Red Sea traffic. Its effect is on the Panama edge itself (76.6 → 53.6 transits,
-about −30 %).
+should not change Red Sea traffic. Its effect is on the Panama edge itself (19.5 → 15.3 transits,
+about −21 %), an edge that already sits at 325 % of its observed crude capacity at baseline — the
+router sends crude through Panama that a vessel-size limit would forbid (section 8).
 
 ## 7. Calibration
 
@@ -178,9 +179,15 @@ loss = |suez_pct_model - suez_pct_observed| / 100
 only. March–June 2024 (H2) is never used to choose anything, so scoring it is a real out-of-sample
 test rather than a fitted number dressed up as validation.
 
-Fitted values: alpha 0.12, beta 3.0, Red Sea throttle 0.85, war-risk $1.25/bbl. On H1 that gives a
-Suez share of 0.5457 against 0.5412 observed (error 0.0045, well inside the 5 % target). On held-out
-H2 the same parameters give 0.5457 against 0.4167 observed, an error of 0.129.
+Fitted values: alpha 0.12, beta 3.0, Red Sea throttle 0.85, war-risk $1.25/bbl. The scenario carries
+one throttle for both windows and therefore produces one share: 0.4395. That is 0.1017 from H1's
+0.5412 — outside the 5 % target — and 0.0228 from held-out H2's 0.4167.
+
+The asymmetry is the honest result rather than a tuning failure: a constant cannot separate two
+windows whose observed shares are 0.124 apart. Re-running the grid on the current capacity basis
+picks throttle 0.90 and $2.00/bbl, which slides the same constant to 0.4097 — H1 error 0.1315, H2
+error 0.0070, total error 0.133 either way — while pushing Ever Given MAE from 23.8 to 28.4. It is
+not committed for that reason.
 
 ## 8. What is validated, and how
 
@@ -195,11 +202,20 @@ Scored events are held out from calibration: Red Sea H2, the Ever Given peak wee
 
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pct points) |
 |---|---|---|---|---|---|
-| Red Sea H2 | 20.5 | 27.1 | 0.165 | 0.7 | 16.3 |
-| Ever Given peak | 21.9 | 30.5 | 0.253 | 0.7 | 22.5 |
-| Panama drought | 17.3 | 23.4 | 0.141 | 0.5 | 16.6 |
+| Red Sea H2 | 22.2 | 30.1 | 0.177 | 0.8 | 18.4 |
+| Ever Given peak | 23.8 | 31.9 | 0.236 | 0.8 | 21.0 |
+| Panama drought | 16.8 | 23.2 | 0.120 | 0.7 | 13.7 |
 
-Every single event meets the acceptance criterion of **MAE < 25 transits off reality**.
+Every single event meets the acceptance criterion of **MAE < 25 transits off reality**, and MAPE
+averages 17.7 % across the three.
+
+One capacity consequence shows up at baseline and belongs here rather than in a footnote. Crude is a
+small share of Panama's tanker traffic (0.94M bbl/wk against 89 tankers, a 0.058 share), so observed
+crude capacity there is about 6 transits/wk while the router sends 19.5 — **325 % utilisation and 6.3
+days of queue at a canal nobody is queueing at**. That is an OD/routing error, not a capacity error:
+the router sends crude through Panama that a vessel-size limit would forbid. It was invisible while
+capacity was re-based to the model's own output, because the re-basing scaled the pipe to whatever
+the router chose to send.
 
 ### Voyage time check
 

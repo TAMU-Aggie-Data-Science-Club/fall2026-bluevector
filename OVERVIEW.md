@@ -463,21 +463,26 @@ Throttles come from the event, never from the answer being scored.
 | Scenario | Setting | Reason |
 |---|---|---|
 | `baseline` | 1.0 | nothing closed |
-| `red_sea_2023h1` (Dec–Feb) / `red_sea_2024` (Mar–Jun) | no throttle; $0.50 / $1.00 per bbl war-risk premium at Bab-el-Mandeb | Suez stayed open, so the diversion is a price response |
+| `red_sea_2024` (both windows) | Suez and Bab-el-Mandeb 0.85; $1.25/bbl war-risk premium | fitted on Dec 2023–Feb 2024 only; the canal stayed open, so the 15 % cut is the model's stand-in for a gap it cannot otherwise reproduce |
 | `ever_given_2021` | Suez 1/7 ≈ 0.14 | canal blocked 6 of 7 days in the peak week |
 | `panama_drought_2023` | Panama 24/36 ≈ 0.67 | daily booking slots cut from ~36 to 24 |
 
 | Scenario | Suez transits/wk | Suez share | Stranded (bbl/wk) |
 |---|---|---|---|
-| baseline | 32.3 | 0.7136 | 0 |
-| Red Sea H1 | 22.3 | 0.5557 | 0 |
-| Red Sea H2 | 10.0 | 0.3279 | 0 |
-| Ever Given 2021 | 9.4 | 0.2883 | 0 |
-| Panama drought 2023 | 32.3 | 0.7136 | 0 |
+| baseline | 32.5 | 0.5824 | 0 |
+| Red Sea (H1 and H2 are the same run) | 22.6 | 0.4395 | 0 |
+| Ever Given 2021 | 3.9 | 0.0867 | 0 |
+| Panama drought 2023 | 32.5 | 0.5829 | 0 |
+
+H1 and H2 are one row because one throttle serves both windows — the model has no way to say that
+March–June behaved differently from December–February, and the fitted share sits between the two
+observed values rather than matching either.
 
 Only a full closure strands anything. Panama barely moves Suez, which is correct: a canal on the
-other side of the world should not change Red Sea traffic. Its effect is local: Panama 62.2 → 54.5
-transits, about −12 %, at 131 % of capacity and 3.1 days of queueing.
+other side of the world should not change Red Sea traffic. Its effect is local: the Panama edge
+drops 19.5 → 15.3 transits (−21 %). At baseline that edge is already at 325 % of its observed crude
+capacity, because the OD routes ~19.5M bbl/wk of crude through a corridor that carries 0.94M — the
+queue figure there is an artefact of over-routing, not congestion (see FLOW_MODEL §8).
 
 Every scenario has all 279 edges, so `scenario_edge_flows.parquet` has 1,116 rows.
 
@@ -520,20 +525,20 @@ Fitted on **Dec 2023–Feb 2024 only**. Mar–Jun 2024 is never used to choose a
 
 | | Model | Observed | Error |
 |---|---|---|---|
-| H1 Suez change | −30.89 % | −29.46 % | 1.43 pp |
-| H1 Cape change | +37.69 % | +68.85 % | 31.16 pp |
-| H1 Suez share | 0.5557 | 0.5412 | **0.0145** |
-| H2 Suez share (held out) | 0.3279 | 0.4167 | **0.0888** |
+| H1 Suez change | −30.3 % | −29.5 % | 0.8 pp |
+| H1 Cape change | +24.0 % | +68.8 % | 44.8 pp |
+| H1 Suez share | 0.4395 | 0.5412 | **0.1017** |
+| H2 Suez share (held out) | 0.4395 | 0.4167 | **0.0228** |
 
-Total loss 0.3404, dominated by the Cape term (0.312). The share target (< 0.05) is met on H1 and
-missed on H2, where the ~1 % January premium over-diversifies a spring window whose rates averaged
-below their peak.
+Total loss 0.558, dominated by the Cape term (0.449). The share target (< 0.05) is missed on H1 and
+met on held-out H2, which is the reverse of what the same fit produced before capacity moved onto the
+observed crude basis — the constant just slid along the line between two windows 0.124 apart.
 
-The Cape is what no input fixes. About 0.5 Cape transits move per Suez transit lost (+37.7 % against
-−30.9 %); the observation is 2.34 (68.8 % against 29.5 %). More premium drives Suez past the
-observation without buying the Cape response. The Cape is not absorption-limited: at an observed
-capacity of 100 transits/week it carries the same 3.1M bbl as at 7.4. It is simply not on the cheapest
-path for the flows the OD contains.
+The Cape is what no input fixes. About 0.8 Cape transits move per Suez transit lost (+24.0 % against
+−30.3 %); the observation is 2.34 (68.8 % against 29.5 %). The Cape now has 95 crude transits of
+observed capacity, so it absorbs the reroute without any price pressure to match the observation;
+the gap is that too little crude sits on a Cape path at baseline (3.1M bbl/wk modelled against
+39.7M observed all-tanker throughput).
 
 ### 5.2 Why validation compares shifts, not levels
 
@@ -550,9 +555,9 @@ Every metric below is about direction and relative size.
 
 | Event | MAE (transits/wk) | RMSE | MAPE | Direction match | Mean gap (pp) |
 |---|---|---|---|---|---|
-| Red Sea, Mar–Jun 2024 | 32.5 | 41.1 | 0.207 | 0.6 | 19.3 |
-| Ever Given peak week | 18.2 | 26.2 | 0.186 | 0.7 | 18.9 |
-| Panama drought | 17.2 | 23.2 | 0.142 | 0.5 | 16.2 |
+| Red Sea, Mar–Jun 2024 | 22.2 | 30.1 | 0.177 | 0.8 | 18.4 |
+| Ever Given peak week | 23.8 | 31.9 | 0.236 | 0.8 | 21.0 |
+| Panama drought | 16.8 | 23.2 | 0.120 | 0.7 | 13.7 |
 
 RMSE well above MAE in all three means the error sits in a few corridors, not everywhere.
 `validation_event_details.csv` names them.
@@ -708,9 +713,9 @@ badly on four weeks is probably luck.
 
 | Item | Current | Calibrated / source of truth |
 |---|---|---|
-| Red Sea preset | `suez = 0.35`, `babalmandab = 0.35` | no throttle; $0.50/bbl war-risk premium at Bab-el-Mandeb (`awrp_red_sea_h1_usd_per_bbl`) |
-| Default BPR sliders | α 0.18, β 3.8 | α 0.10, β 3.0 |
-| Baseline Suez share shown in the KPI delta | hardcoded 0.611 | 0.7136 |
+| Red Sea preset | `suez = 0.35`, `babalmandab = 0.35` | `suez = 0.85`, `babalmandab = 0.85`, $1.25/bbl war-risk premium (`red_sea_throttle`, `red_sea_war_risk_per_bbl`) |
+| Default BPR sliders | α 0.18, β 3.8 | α 0.12, β 3.0 |
+| Baseline Suez share shown in the KPI delta | hardcoded 0.611 | 0.5824 |
 | Slider semantics | "0 = closed, 1 = open" | same fraction-of-throughput meaning; the presets are what is wrong |
 
 The dashboard intentionally shows physical metrics only (Deliverables 3–4). Price belongs to
@@ -733,9 +738,9 @@ Only three events can be checked against data; everything else is a what-if and 
 
 | Event | Date | Mechanism | Modelled as | Observed | Model |
 |---|---|---|---|---|---|
-| Red Sea / Houthi diversions | Dec 2023 – 2024 | war-risk rerouting | AWRP $0.50/bbl (H1) / $1.00 (H2) at Bab-el-Mandeb; no throughput cut | Suez −37.5 % full window (H1 −29.5 %, H2 −43.5 %); Cape +69 % then +123 %; share 0.714 → 0.541 | Suez −30.9 %; share 0.5557 |
-| Ever Given | 23–29 Mar 2021 | channel blocked | Suez 1/7 | Suez −76 % in the peak week | −70.8 %; Cape +79 % against +5.7 % |
-| Panama drought | 2023 – 2024 | draft and slot limits | Panama 24/36 = 0.67 | canal −25.8 %; Cape +51.4 %; slots 36 → 24/day | −12.4 %; no Cape response |
+| Red Sea / Houthi diversions | Dec 2023 – 2024 | war-risk rerouting | Suez and Bab-el-Mandeb 0.85, $1.25/bbl war-risk | Suez −29.5 % (H1) / −43.5 % (H2); Cape +69 % then +123 %; share 0.541 / 0.417 | Suez −30.3 %; share 0.4395 (one run for both windows) |
+| Ever Given | 23–29 Mar 2021 | channel blocked | Suez 1/7 | Suez −76 % in the peak week, Cape +5.7 % | Suez −87.9 %; Cape +77.0 % |
+| Panama drought | 2023 – 2024 | draft and slot limits | Panama 24/36 = 0.67 | canal −25.8 %; Cape +51.4 %; slots 36 → 24/day | Panama edge −21.4 %; no Cape response |
 
 **What-if set** (no observed event, always labelled): Hormuz, Malacca, Bab-el-Mandeb alone, Gibraltar,
 Bosporus, Cape of Good Hope, Sunda, Magellan, and compound cases.
@@ -898,7 +903,7 @@ model output kept in version control, so both halves of Deliverable 5 work from 
 - baseline stranded = 0;
 - no negative volumes;
 - a closed edge carries zero flow;
-- Suez share still near 0.7136 baseline / 0.5557 in the Red Sea H1 scenario.
+- Suez share still near 0.5824 at baseline / 0.4395 in the Red Sea scenario.
 
 ---
 
