@@ -40,7 +40,9 @@ def main():
     changed, _ = build_features(perturbed)
     mask = pd.to_datetime(hist.week_or_scenario_id) == cutoff
     other_mask = pd.to_datetime(changed.week_or_scenario_id) == cutoff
-    assert np.array_equal(hist.loc[mask, NETWORK_FEATURES].to_numpy(), changed.loc[other_mask, NETWORK_FEATURES].to_numpy()), 'Future data leaked into price features' 
+    expected_features = hist.loc[mask, NETWORK_FEATURES].to_numpy()
+    altered_features = changed.loc[other_mask, NETWORK_FEATURES].to_numpy()
+    assert np.array_equal(expected_features, altered_features), 'Future data leaked into price features'
     features_path = PROCESSED / 'gnn_price_embeddings.parquet'
     models = {'random_walk': None, 'ar1': BASE_FEATURES, 'blue_vector': NETWORK_FEATURES}
     if features_path.exists():
