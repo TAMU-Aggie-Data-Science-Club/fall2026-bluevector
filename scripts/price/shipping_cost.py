@@ -27,13 +27,14 @@ Edge cost formula (from DELIVERABLE5.md §6 E1):
 
 where
     rate             — daily charter rate in USD/day  ($35k / $50k / $75k)
-    barrels_per_ship — average cargo per transit      (1,000,000 bbl, from flow_params.json)
+    barrels_per_ship — edge oil volume / edge transits; config fallback on idle edges
     toll_per_barrel  — per-edge toll, derived from cost_per_barrel in baseline
                        minus its sailing and delay components (see note below)
 
-Fleet-average cost:
-    Weighted by oil_volume_bbl across all active edges in the scenario;
-    zero-volume edges are excluded from the average.
+Fleet voyage cost:
+    Sum edge flow times edge cost, divided by served cargo (half the sum
+    of connector flows). This counts every voyage leg without counting a
+    routed barrel repeatedly in the denominator.
 
 Toll derivation
     The 22-column table's cost_per_barrel already includes toll.  At baseline
@@ -94,7 +95,10 @@ def _derive_toll(baseline: pd.DataFrame, base_rate: float, bbl_per_ship: float) 
     Tolls are floored at zero (rounding artefacts can produce tiny negatives).
     """
     bl = baseline[baseline["throttle_factor"] == 1.0].copy()
-    sailing = (bl["free_flow_days"] + bl["delay_days"]) * base_rate / bbl_per_ship
+    cargo = pd.Series(bbl_per_ship, index=bl.index, dtype=float)
+    if {"oil_volume_bbl", "tanker_transits"}.issubset(bl.columns):
+        cargo = (bl.oil_volume_bbl / bl.tanker_transits.replace(0, np.nan)).fillna(bbl_per_ship)
+    sailing = (bl["free_flow_days"] + bl["delay_days"]) * base_rate / cargo
     toll = (bl["cost_per_barrel"] - sailing).clip(lower=0.0)
     toll.index = bl["edge_id"]
     return toll
@@ -114,7 +118,7 @@ def compute_edge_costs(
     """
     Add cost_per_bbl_low / _base / _high columns to df.
 
-    Closed edges (throttle_factor == 0) → cost is undefined/zero; we still
+    Closed edges (throttle_factor == 0) -> cost is undefined/zero; we still
     report the formula value so the row is not NaN, but oil_volume_bbl == 0
     already flags these edges.
 
@@ -130,10 +134,15 @@ def compute_edge_costs(
     out["toll_per_barrel"] = out["edge_id"].map(toll_by_edge).fillna(0.0)
 
     edge_days = out["free_flow_days"] + out["delay_days"]
+    cargo = pd.Series(bbl_per_ship, index=out.index, dtype=float)
+    if {"oil_volume_bbl", "tanker_transits"}.issubset(out.columns):
+        cargo = (out.oil_volume_bbl / out.tanker_transits.replace(0, np.nan)).fillna(bbl_per_ship)
+    if (cargo <= 0).any():
+        raise ValueError("Cargo per transit must be positive")
 
     for label, rate in [("low", rate_low), ("base", rate_base), ("high", rate_high)]:
         out[f"cost_per_bbl_{label}"] = (
-            edge_days * rate / bbl_per_ship + out["toll_per_barrel"]
+            edge_days * rate / cargo + out["toll_per_barrel"]
         )
 
     return out
@@ -141,7 +150,7 @@ def compute_edge_costs(
 
 def _fleet_average_cost(df: pd.DataFrame, rates: list[tuple[str, str]]) -> pd.Series:
     """
-    Barrel-weighted mean cost across all active (oil_volume_bbl > 0) edges
+    Total transport cost divided by served barrels across all active edges
     for each scenario.
 
     Parameters
@@ -154,7 +163,11 @@ def _fleet_average_cost(df: pd.DataFrame, rates: list[tuple[str, str]]) -> pd.Se
 
     result_rows = []
     for scenario_id, grp in active.groupby("scenario_id", sort=False):
-        total_vol = grp["oil_volume_bbl"].sum()
+        # Each served barrel crosses two connectors: loading and discharge.
+        # Dividing by all edge traversals instead would report average leg cost.
+        total_vol = grp.loc[grp.edge_type.eq("connector"), "oil_volume_bbl"].sum() / 2
+        if total_vol <= 0:
+            raise ValueError("No served cargo denominator for fleet voyage cost")
         row: dict = {"scenario_id": scenario_id}
         for src_col, dst_col in rates:
             row[dst_col] = (grp[src_col] * grp["oil_volume_bbl"]).sum() / total_vol
@@ -205,6 +218,9 @@ def main(check: bool = False) -> None:
         ("cost_per_bbl_high", "fleet_cost_per_bbl_high"),
     ]
     fleet = _fleet_average_cost(out, rate_pairs)
+    for label in ['low', 'base', 'high']:
+        column = f'fleet_cost_per_bbl_{label}'
+        fleet[f'delta_cost_per_bbl_{label}'] = fleet[column] - fleet.loc['baseline', column]
     out = out.join(fleet, on="scenario_id")
 
     # ---- select output columns ---------------------------------------------
@@ -214,6 +230,7 @@ def main(check: bool = False) -> None:
         "toll_per_barrel", "oil_volume_bbl", "tanker_transits",
         "cost_per_bbl_low", "cost_per_bbl_base", "cost_per_bbl_high",
         "fleet_cost_per_bbl_low", "fleet_cost_per_bbl_base", "fleet_cost_per_bbl_high",
+        "delta_cost_per_bbl_low", "delta_cost_per_bbl_base", "delta_cost_per_bbl_high",
         "source",
     ]
     out = out[out_cols]
@@ -221,7 +238,7 @@ def main(check: bool = False) -> None:
     # ---- write output ------------------------------------------------------
     PROCESSED.mkdir(parents=True, exist_ok=True)
     out.to_csv(OUT_FILE, index=False)
-    print(f"[shipping_cost] wrote {len(out):,} rows → {OUT_FILE}")
+    print(f"[shipping_cost] wrote {len(out):,} rows -> {OUT_FILE}")
 
     # ---- acceptance check --------------------------------------------------
     if check:
@@ -246,8 +263,7 @@ def _acceptance_check(df: pd.DataFrame) -> None:
     ]
 
     if suez_closed.empty or baseline_suez.empty:
-        print("  WARNING: could not find Suez rows for check")
-        return
+        raise ValueError("Missing required Suez closure or baseline for acceptance check")
 
     # Fleet-level delta for the closed scenario vs baseline
     for rate in ["low", "base", "high"]:
@@ -261,8 +277,21 @@ def _acceptance_check(df: pd.DataFrame) -> None:
 
     # No NaN check
     nan_count = df[["cost_per_bbl_low", "cost_per_bbl_base", "cost_per_bbl_high"]].isna().sum().sum()
+    assert nan_count == 0, "Missing shipping costs"
+    assert np.isfinite(df[["cost_per_bbl_low", "cost_per_bbl_base", "cost_per_bbl_high"]].to_numpy()).all()
     print(f"  NaN count in cost columns: {nan_count}  ({'PASS' if nan_count == 0 else 'FAIL'})")
 
+    # A route split into more edges must retain its complete voyage cost.
+    for lane_days in ([10.], [5., 5.]):
+        days = [0.] + lane_days + [0.]
+        fixture = pd.DataFrame(dict(scenario_id='check', edge_id=[str(i) for i in range(len(days))],
+                                    edge_type=['connector'] + ['lane'] * len(lane_days) + ['connector'],
+                                    free_flow_days=days, delay_days=0., oil_volume_bbl=100., tanker_transits=1.))
+        zero_tolls = pd.Series(0., index=fixture.edge_id)
+        costs = compute_edge_costs(fixture, zero_tolls, 10., 10., 10., 100.)
+        voyage = _fleet_average_cost(costs, [('cost_per_bbl_base', 'cost')]).iloc[0]['cost']
+        assert np.isclose(voyage, 1.), 'Voyage cost depends on edge segmentation'
+    print("  Route segmentation invariance: PASS")
     print("[shipping_cost] acceptance check complete\n")
 
 

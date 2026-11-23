@@ -5,8 +5,8 @@ PURPOSE
 -------
 Build the three network-level indices for every *historical week* (from
 PortWatch / EIA data) and for every *scenario* (from the scenario edge tables).
-The same function is used in both paths so the column names, units and
-definitions are guaranteed to be identical.
+Scenario route quantities share the standalone cost implementation. History
+provides the observed Suez share; unavailable route quantities remain missing.
 
 Outputs
 -------
@@ -24,14 +24,14 @@ data/processed/scenario_price_features.parquet
 
 HOW IT WORKS
 ------------
-Three indices (one function, identical for history and scenarios):
+Scenario indices (history supplies only the observed Suez share):
 
 1. suez_tanker_share
        suez_transits / (suez_transits + cape_transits)
    Measures the Europe–Asia routing split.  When Suez is blocked ships go
    around the Cape, so this ratio falls.
-   "suez"  → searoute_passage == "suez"
-   "cape"  → searoute_passage == "south_africa"
+   "suez"  -> searoute_passage == "suez"
+   "cape"  -> searoute_passage == "south_africa"
 
 2. avg_voyage_days (barrel-weighted)
        SUM(oil_volume_bbl * total_days) / SUM(oil_volume_bbl)
@@ -42,20 +42,10 @@ Three indices (one function, identical for history and scenarios):
        SUM(|delta_volume_bbl| * length_nm) / 1e9
    The extra work the fleet absorbs when routes shift.
 
-For historical weeks the indices are computed from weekly PortWatch chokepoint
-data (observed transits at Suez and Cape).  Voyage days and rerouted barrel-
-miles are approximated from the baseline edge flows scaled by the weekly
-utilisation ratio (observed / baseline transits).  The delta_volume column is
-not directly observed historically, so for the history path we set
-rerouted_barrel_miles = 0 and note it as a limitation in the source column.
-
-Shipping cost per barrel for history
-       Identical formula to shipping_cost.py, applied to the scaled baseline
-       edge table per week.  Gives low / base / high freight bands over time.
-
-GNN embeddings
-       Zero for history rows and for physics/modeled scenarios (they will be
-       filled by train_gnn.py in slot G3 and joined in backtest_price.py).
+Historical PortWatch weeks provide the Suez/Cape share only. Route days,
+rerouted work, shipping costs and GNN embeddings are unavailable at this stage
+and remain missing. The price backtest joins separately trained lagged GNN
+embeddings and uses only observable network inputs.
 
 Usage
 -----
@@ -71,6 +61,7 @@ import pathlib
 
 import numpy as np
 import pandas as pd
+from scripts.price.shipping_cost import _derive_toll, compute_edge_costs, _fleet_average_cost
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -133,10 +124,10 @@ def compute_indices(
         denom = suez + cape
         suez_share = float(suez / denom) if denom > 0 else float("nan")
 
-        # 2. avg_voyage_days (barrel-weighted)
+        # 2. Voyage days: sum all legs, divide by served (loaded) barrels.
         active = grp[grp["oil_volume_bbl"] > 0]
         total_days = active["free_flow_days"] + active["delay_days"]
-        total_vol = active["oil_volume_bbl"].sum()
+        total_vol = active.loc[active.edge_type.eq("connector"), "oil_volume_bbl"].sum() / 2
         avg_days = (
             float((total_days * active["oil_volume_bbl"]).sum() / total_vol)
             if total_vol > 0 else float("nan")
@@ -147,24 +138,12 @@ def compute_indices(
             (grp["delta_volume_bbl"].abs() * grp["length_nm"]).sum() / 1e9
         )
 
-        # 4. shipping cost per barrel (fleet average at three rates)
-        edge_days = grp["free_flow_days"] + grp["delay_days"]
-        toll = grp["edge_id"].map(toll_by_edge).fillna(0.0)
-        for label, rate in [("low", rate_low), ("base", rate_base), ("high", rate_high)]:
-            grp = grp.copy()
-            grp[f"_cst_{label}"] = edge_days * rate / bbl_per_ship + toll
-
-        # barrel-weighted fleet averages
-        def _fleet_avg(cost_col: str) -> float:
-            act = grp[grp["oil_volume_bbl"] > 0]
-            tvol = act["oil_volume_bbl"].sum()
-            if tvol <= 0:
-                return float("nan")
-            return float((act[cost_col] * act["oil_volume_bbl"]).sum() / tvol)
-
-        cost_low  = _fleet_avg("_cst_low")
-        cost_base = _fleet_avg("_cst_base")
-        cost_high = _fleet_avg("_cst_high")
+        # Use exactly the same cargo sizes, tolls and served-cargo denominator
+        # as the standalone shipping-cost output.
+        costs = compute_edge_costs(grp, toll_by_edge, rate_low, rate_base, rate_high, bbl_per_ship)
+        costs['scenario_id'] = str(grp_id)
+        fleet = _fleet_average_cost(costs, [(f'cost_per_bbl_{k}', f'fleet_cost_per_bbl_{k}') for k in ['low', 'base', 'high']]).iloc[0]
+        cost_low, cost_base, cost_high = [float(fleet[f'fleet_cost_per_bbl_{k}']) for k in ['low', 'base', 'high']]
 
         rows.append({
             id_col: grp_id,
@@ -195,136 +174,24 @@ def build_history(
     rate_high: float,
     bbl_per_ship: float,
 ) -> pd.DataFrame:
+    """Observed Suez share; unobserved historical route metrics remain missing.
+
+    PortWatch counts alone do not reconstruct global voyages or freight costs.
+    Missing route values are deliberate, never zero-filled or fit as price labels.
     """
-    Build one row per week from observed PortWatch chokepoint data.
-
-    Strategy
-    --------
-    For each week:
-      - Suez and Cape observed tanker transits → suez_tanker_share.
-      - avg_voyage_days: scale baseline edge free_flow_days by (observed /
-        baseline transits ratio); uses baseline flow volume weights.
-      - rerouted_barrel_miles: not directly observable; set to 0.0 and flag
-        as "observed" anyway (limitation noted in source).
-      - Shipping cost: baseline edge costs scaled by the same utilisation
-        ratio for delay, then barrel-weighted.
-
-    Both Suez and Cape must have observations in a week for the week to be
-    included.
-    """
-    # Pivot chokepoints wide: one row per week_ending, one col per passage
-    piv_transits = (
-        chokepoint
-        .pivot_table(
-            index="week_ending",
-            columns="searoute_passage",
-            values="weekly_tanker_transits",
-            aggfunc="sum",
-        )
-        .reset_index()
-    )
-    piv_volume = (
-        chokepoint
-        .pivot_table(
-            index="week_ending",
-            columns="searoute_passage",
-            values="est_oil_volume_bbl",
-            aggfunc="sum",
-        )
-        .reset_index()
-    )
-
-    # We need Suez ("suez") and Cape ("south_africa") in both
-    for col in ["suez", "south_africa"]:
-        if col not in piv_transits.columns:
-            piv_transits[col] = float("nan")
-
-    piv_transits = piv_transits.dropna(subset=["suez", "south_africa"])
-
-    # Baseline transit values for scaling
-    bl_suez = baseline[baseline["searoute_passage"] == "suez"]["tanker_transits"].sum()
-    bl_cape = baseline[baseline["searoute_passage"] == "south_africa"]["tanker_transits"].sum()
-    bl_total_vol = baseline["oil_volume_bbl"].sum()
-
-    # Baseline fleet-level voyage days (for scaling)
-    bl_days = (
-        (baseline["free_flow_days"] + baseline["delay_days"]) * baseline["oil_volume_bbl"]
-    ).sum() / bl_total_vol if bl_total_vol > 0 else float("nan")
-
-    # Edge-level baseline shipping costs (for fleet average scaling)
-    bl = baseline.copy()
-    bl_toll = bl["edge_id"].map(toll_by_edge).fillna(0.0)
-    for label, rate in [("low", rate_low), ("base", rate_base), ("high", rate_high)]:
-        bl[f"_cst_{label}"] = (bl["free_flow_days"] + bl["delay_days"]) * rate / bbl_per_ship + bl_toll
-
-    def _bl_fleet(col: str) -> float:
-        act = bl[bl["oil_volume_bbl"] > 0]
-        tvol = act["oil_volume_bbl"].sum()
-        return float((act[col] * act["oil_volume_bbl"]).sum() / tvol) if tvol > 0 else float("nan")
-
-    bl_cost_low  = _bl_fleet("_cst_low")
-    bl_cost_base = _bl_fleet("_cst_base")
-    bl_cost_high = _bl_fleet("_cst_high")
-
-    # Build history rows
-    rows = []
-    for _, wrow in piv_transits.iterrows():
-        week = wrow["week_ending"]
-        obs_suez = wrow["suez"]
-        obs_cape = wrow["south_africa"]
-
-        denom = obs_suez + obs_cape
-        suez_share = float(obs_suez / denom) if denom > 0 else float("nan")
-
-        # Scale baseline voyage days by overall observed/baseline transit ratio
-        # (rough approximation: if more ships go around Cape they travel longer)
-        combined_ratio = (
-            (obs_suez + obs_cape) / (bl_suez + bl_cape)
-            if (bl_suez + bl_cape) > 0 else 1.0
-        )
-        # Cape detour premium ≈ 10 extra days vs Suez (13 096 nm vs 319 nm round trip)
-        cape_premium_days = 10.0  # documented assumption: Cape route adds ~10 days vs Suez
-        suez_divert_share = max(0.0, 1.0 - suez_share) if not np.isnan(suez_share) else 0.0
-        avg_days = bl_days + suez_divert_share * cape_premium_days * (1.0 - suez_share if not np.isnan(suez_share) else 0.0)
-
-        # Shipping cost: scale delay component by combined_ratio proxy
-        # (simplified: delay scales with utilization which is proportional to transits)
-        # In practice delay is small in baseline; this gives a reasonable low/high band
-        cost_low  = bl_cost_low  * combined_ratio
-        cost_base = bl_cost_base * combined_ratio
-        cost_high = bl_cost_high * combined_ratio
-
-        rows.append({
-            "week_or_scenario_id": pd.Timestamp(week),
-            "suez_tanker_share": suez_share,
-            "avg_voyage_days": avg_days,
-            "rerouted_barrel_miles": 0.0,  # not observable from weekly agg
-            "shipping_cost_per_bbl_low":  cost_low,
-            "shipping_cost_per_bbl_base": cost_base,
-            "shipping_cost_per_bbl_high": cost_high,
-        })
-
-    hist = pd.DataFrame(rows)
-
-    # Join Brent
-    brent_j = brent[["week_ending", "brent_weekly_avg"]].copy()
-    brent_j["week_ending"] = pd.to_datetime(brent_j["week_ending"])
-    hist["week_or_scenario_id"] = pd.to_datetime(hist["week_or_scenario_id"])
-    hist = hist.merge(
-        brent_j.rename(columns={"week_ending": "week_or_scenario_id"}),
-        on="week_or_scenario_id",
-        how="left",
-    )
-
-    # delta_cost vs first week of data
-    first_base = hist["shipping_cost_per_bbl_base"].iloc[0]
-    hist["delta_cost_per_bbl_base"] = hist["shipping_cost_per_bbl_base"] - first_base
-
-    # GNN embeddings (zeros for history)
+    work = chokepoint.copy()
+    if 'n_days_observed' in work:
+        work = work[work.n_days_observed.eq(7)]
+    piv = work.pivot(index='week_ending', columns='searoute_passage', values='weekly_tanker_transits')
+    share = piv.suez / (piv.suez + piv.south_africa).replace(0, np.nan)
+    hist = share.rename('suez_tanker_share').reset_index().rename(columns={'week_ending': 'week_or_scenario_id'})
+    hist = hist.merge(brent.rename(columns={'week_ending': 'week_or_scenario_id'}), on='week_or_scenario_id', how='left', validate='one_to_one')
+    for col in ['avg_voyage_days', 'rerouted_barrel_miles', 'shipping_cost_per_bbl_low',
+                'shipping_cost_per_bbl_base', 'shipping_cost_per_bbl_high', 'delta_cost_per_bbl_base']:
+        hist[col] = np.nan
     for i in range(8):
-        hist[f"gnn_emb_{i}"] = 0.0
-
-    hist["source"] = "observed"
+        hist[f'gnn_emb_{i}'] = np.nan
+    hist['source'] = 'observed'
     return hist
 
 
@@ -340,6 +207,7 @@ def build_scenarios(
     rate_base: float,
     rate_high: float,
     bbl_per_ship: float,
+    observed_reference: pd.Series | None = None,
 ) -> pd.DataFrame:
     """
     Build one row per scenario_id from the physics and simulated tables.
@@ -353,6 +221,17 @@ def build_scenarios(
         bbl_per_ship=bbl_per_ship,
         toll_by_edge=toll_by_edge,
     )
+
+    # The solver counts crude-carrying transits; history counts all tankers.
+    # Apply solver percentage changes to pre-event observed tanker means before
+    # taking the share. Comparing the raw crude share with history mixes populations.
+    if observed_reference is not None:
+        base_cp = baseline.groupby('searoute_passage').tanker_transits.sum()
+        scenario_cp = combined.pivot_table(index='scenario_id', columns='searoute_passage', values='tanker_transits', aggfunc='sum')
+        implied_suez = scenario_cp.suez / base_cp['suez'] * observed_reference['suez']
+        implied_cape = scenario_cp.south_africa / base_cp['south_africa'] * observed_reference['south_africa']
+        shares = implied_suez / (implied_suez + implied_cape).replace(0, np.nan)
+        result['suez_tanker_share'] = result.week_or_scenario_id.map(shares)
 
     # Baseline fleet cost for delta
     bl_indices = compute_indices(
@@ -428,12 +307,7 @@ def main(check: bool = False) -> None:
 
     # Derive toll once from baseline
     # toll = cost_per_barrel - free_flow_days * base_rate / bbl_per_ship  (floored 0)
-    bl_toll_series = (
-        baseline["cost_per_barrel"]
-        - baseline["free_flow_days"] * rate_base / bbl_per_ship
-    ).clip(lower=0.0)
-    bl_toll_series.index = baseline["edge_id"]
-    toll_by_edge = bl_toll_series
+    toll_by_edge = _derive_toll(baseline, rate_base, bbl_per_ship)
 
     # ---- HISTORY -----------------------------------------------------------
     print("[network_indices] Building historical price dataset …")
@@ -444,7 +318,7 @@ def main(check: bool = False) -> None:
     )
     hist = _reorder(hist, _HISTORY_EXTRA)
     hist.to_parquet(OUT_HISTORY, index=False)
-    print(f"[network_indices] wrote {len(hist):,} history rows → {OUT_HISTORY}")
+    print(f"[network_indices] wrote {len(hist):,} history rows -> {OUT_HISTORY}")
 
     # ---- SCENARIOS ---------------------------------------------------------
     print("[network_indices] Building scenario price features …")
@@ -453,12 +327,16 @@ def main(check: bool = False) -> None:
         combined, baseline, toll_by_edge,
         rate_low=rate_low, rate_base=rate_base, rate_high=rate_high,
         bbl_per_ship=bbl_per_ship,
+        observed_reference=chokepoint[
+            pd.to_datetime(chokepoint.week_ending).between('2023-01-01', '2023-10-31')
+            & chokepoint.n_days_observed.eq(7)
+        ].groupby('searoute_passage').weekly_tanker_transits.mean(),
     )
     scen_features = _reorder(scen_features, [])
     scen_features.to_parquet(OUT_SCENARIO, index=False)
     scen_features.to_parquet(OUT_CONTRACT, index=False)   # §3.2 alias
-    print(f"[network_indices] wrote {len(scen_features):,} scenario rows → {OUT_SCENARIO}")
-    print(f"[network_indices] also wrote alias → {OUT_CONTRACT}")
+    print(f"[network_indices] wrote {len(scen_features):,} scenario rows -> {OUT_SCENARIO}")
+    print(f"[network_indices] also wrote alias -> {OUT_CONTRACT}")
 
     if check:
         _acceptance_check(hist, scen_features)
@@ -468,10 +346,9 @@ def _acceptance_check(hist: pd.DataFrame, scen: pd.DataFrame) -> None:
     print("\n[network_indices] Running acceptance check …")
 
     # 1. No NaN in key columns (history)
-    key_hist = ["suez_tanker_share", "avg_voyage_days",
-                "shipping_cost_per_bbl_low", "shipping_cost_per_bbl_base",
-                "shipping_cost_per_bbl_high"]
+    key_hist = ["suez_tanker_share"]
     nan_hist = hist[key_hist].isna().sum().sum()
+    assert nan_hist == 0, "Missing observed Suez shares"
     print(f"  History NaN in key columns: {nan_hist} ({'PASS' if nan_hist == 0 else 'FAIL'})")
 
     # 2. Scenario columns match history columns (minus brent_weekly_avg)
@@ -479,13 +356,17 @@ def _acceptance_check(hist: pd.DataFrame, scen: pd.DataFrame) -> None:
     hist_cols = set(hist.columns) - {"brent_weekly_avg"}
     missing = hist_cols - scen_cols
     extra = scen_cols - hist_cols
+    assert not missing and not extra, "History/scenario schemas differ"
+    numeric = ["suez_tanker_share", "avg_voyage_days", "rerouted_barrel_miles", "shipping_cost_per_bbl_low", "shipping_cost_per_bbl_base", "shipping_cost_per_bbl_high"]
+    assert np.isfinite(scen[numeric].to_numpy()).all(), "Nonfinite scenario features"
     print(f"  Scenario vs history columns match: missing={missing}, extra={extra} "
-          f"({'PASS' if not missing else 'FAIL'})")
+          f"({'PASS' if not missing and not extra else 'FAIL'})")
 
     # 3. Suez-closed scenario has suez_share ~ 0
     suez_closed = scen[scen["week_or_scenario_id"] == "sim_E001_th_000"]
     if not suez_closed.empty:
         share = suez_closed["suez_tanker_share"].iloc[0]
+        assert share < 0.05, "Closed Suez has a nonzero tanker share"
         print(f"  Suez-closed scenario suez_share = {share:.4f} (expect near 0, {'PASS' if share < 0.05 else 'FAIL'})")
 
     # 4. Baseline scenario has suez_share similar to observed
