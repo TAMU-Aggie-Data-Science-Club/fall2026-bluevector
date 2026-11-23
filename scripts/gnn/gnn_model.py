@@ -44,7 +44,8 @@ class EdgeGNN(nn.Module):
         h_node = self.node_enc(x_node)
         h_edge = self.edge_enc(x_edge)
         for lin, upd, nn_, en_ in zip(self.node_lin, self.edge_upd, self.node_norm, self.edge_norm):
-            agg = torch.zeros_like(h_node).index_add_(0, dst, h_edge)  # sum incoming edge messages
+            # Each CSV row is a physical corridor carrying both travel directions.
+            agg = torch.zeros_like(h_node).index_add_(0, dst, h_edge).index_add_(0, src, h_edge)
             h_node = nn_(h_node + torch.relu(lin(agg)))
             h_edge = en_(h_edge + upd(torch.cat([h_node[src], h_node[dst], h_edge], dim=-1)))
 

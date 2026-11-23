@@ -29,7 +29,7 @@ where
     rate             — daily charter rate in USD/day  ($35k / $50k / $75k)
     barrels_per_ship — average cargo per transit      (1,000,000 bbl, from flow_params.json)
     toll_per_barrel  — per-edge toll, derived from cost_per_barrel in baseline
-                       minus its sailing component (see note below)
+                       minus its sailing and delay components (see note below)
 
 Fleet-average cost:
     Weighted by oil_volume_bbl across all active edges in the scenario;
@@ -39,7 +39,7 @@ Toll derivation
     The 22-column table's cost_per_barrel already includes toll.  At baseline
     (throttle_factor == 1), the toll component is:
         toll_per_barrel = baseline_cost_per_barrel
-                         - baseline_free_flow_days * base_rate / barrels_per_ship
+                         - (baseline_free_flow_days + baseline_delay_days) * base_rate / barrels_per_ship
     This is computed once from the baseline scenario and joined to every other
     scenario so the toll is consistent everywhere.
 
@@ -87,14 +87,14 @@ def _derive_toll(baseline: pd.DataFrame, base_rate: float, bbl_per_ship: float) 
     Returns a Series indexed by edge_id with the toll in USD/barrel.
 
     For the baseline scenario with throttle_factor == 1:
-        cost_per_barrel = free_flow_days * base_rate / bbl_per_ship + toll_per_barrel
+        cost_per_barrel = (free_flow_days + delay_days) * base_rate / bbl_per_ship + toll_per_barrel
     So:
-        toll_per_barrel = cost_per_barrel - free_flow_days * base_rate / bbl_per_ship
+        toll_per_barrel = cost_per_barrel - (free_flow_days + delay_days) * base_rate / bbl_per_ship
 
     Tolls are floored at zero (rounding artefacts can produce tiny negatives).
     """
     bl = baseline[baseline["throttle_factor"] == 1.0].copy()
-    sailing = bl["free_flow_days"] * base_rate / bbl_per_ship
+    sailing = (bl["free_flow_days"] + bl["delay_days"]) * base_rate / bbl_per_ship
     toll = (bl["cost_per_barrel"] - sailing).clip(lower=0.0)
     toll.index = bl["edge_id"]
     return toll
@@ -241,7 +241,7 @@ def _acceptance_check(df: pd.DataFrame) -> None:
         (df["searoute_passage"] == "suez")
     ]
     baseline_suez = df[
-        (df["scenario_id"] == "sim_baseline") &
+        (df["scenario_id"] == "baseline") &
         (df["searoute_passage"] == "suez")
     ]
 

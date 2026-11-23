@@ -499,6 +499,12 @@ def _assemble_edge_tensors(df, meta, baseline_df, flow_params, group_col="scenar
     cp_np = meta.chokepoint_mask.numpy()
 
     work = df.copy()
+    if chokepoint_only_mask:
+        # PortWatch's upstream label name differs from simulator labels.
+        if "tanker_transits" not in work and "weekly_tanker_transits" in work:
+            work["tanker_transits"] = work["weekly_tanker_transits"]
+        if "tanker_transits" not in work:
+            raise ValueError("Observed weekly data must contain tanker transit counts.")
     if "edge_id" in work.columns:
         work["edge_id"] = work["edge_id"].astype(str)
     else:
