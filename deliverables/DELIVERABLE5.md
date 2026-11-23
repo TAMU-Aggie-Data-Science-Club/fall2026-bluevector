@@ -2,6 +2,12 @@
 
 **📅 Due: Wednesday, November 18, 2026**
 
+> **Integration results, 2026-11-22:** the executed comparison and corrected methodology are in
+> [section 9](#9-integration-results--2026-11-22). That section supersedes the original numerical
+> examples and modeling assumptions below. Both simulated-plus-real and strictly real-supervised
+> GNNs were run. Historical route costs and causal Brent supply-risk premiums are not observed.
+
+
 **Who this is for.** Seven people, none of whom built Deliverable 4. Section 2 gives you
 everything from Deliverable 4 you need to start; you do not have to read the old scripts. When you
 want the full physics detail, read [`FLOW_MODEL.md`](../FLOW_MODEL.md).
@@ -330,20 +336,20 @@ matches the table.
 ## ✅ 7. Done checklist
 
 **GNN (G1–G4)**
-- [ ] `gnn_dataset.py` builds tensors with no `NaN`/`Inf` and excludes the held-out events
-- [ ] `gnn_model.py` returns non-negative `(279, 4)` edge predictions plus `(8,)` embeddings, zero flow on closed edges
-- [ ] `train_gnn.py` saves weights and exports `gnn_edge_predictions.parquet` in the 22-column contract with `source = "gnn"`
-- [ ] `evaluate_gnn.py` writes `gnn_evaluation_report.csv` with solver, GNN and baseline side by side
+- [x] `gnn_dataset.py` builds tensors with no `NaN`/`Inf` and excludes the held-out events
+- [x] `gnn_model.py` returns non-negative `(279, 4)` edge predictions plus `(8,)` embeddings, zero flow on closed edges
+- [x] `train_gnn.py` saves weights and exports `gnn_edge_predictions.parquet` in the 22-column contract with `source = "gnn"`
+- [x] `evaluate_gnn.py` writes `gnn_evaluation_report.csv` with solver, GNN and baseline side by side
 
 **Price (E1–E3)**
-- [ ] `shipping_cost.py` writes Low/Base/High cost changes to `scenario_shipping_costs.csv`
-- [ ] `network_indices.py` builds `historical_price_dataset.parquet` and `scenario_price_features.parquet` from one function
-- [ ] `brent_model.py` writes scenario impacts with ordered 90 % intervals
-- [ ] `backtest_price.py` writes `price_backtest_report.csv` against random walk and AR(1)
+- [x] `shipping_cost.py` writes Low/Base/High cost changes to `scenario_shipping_costs.csv`
+- [x] `network_indices.py` builds compatible history/scenario tables, with unavailable historical route fields explicitly missing (methodology corrected in §9)
+- [x] `brent_model.py` writes scenario impacts with ordered 90 % intervals
+- [x] `backtest_price.py` writes `price_backtest_report.csv` against random walk and AR(1)
 
 **Both**
-- [ ] Outputs land in `data/processed/`; nothing under `data/` is committed
-- [ ] One pull request per group into `issue-5/integration`
+- [x] Outputs land in `data/processed/`; nothing under `data/` is committed
+- [ ] Publication/PR updates: deferred; PM requested completed commits remain local
 
 ## ⚠️ 8. Traps
 
@@ -358,3 +364,195 @@ matches the table.
 - **Calling synthetic accuracy validation.** A GNN trained on the solver will copy the solver well.
   The held-out real events are the test.
 - **Missing `source`.** Every table says where its rows came from.
+
+
+## 9. Integration results — 2026-11-22
+
+### What landed and what was completed
+
+After fetching origin, both group tips were already ancestors of `issue-5/integration`:
+`issue-5/gnn` at `abc9701` and `issue-5/price-model` at `9ace92f`.
+The existing G1 dataset work, G2 architecture, and E1/E2 price scripts were retained.
+Training/export (G3), evaluation (G4), and the price backtest (E3) were missing and are now implemented.
+The original G1 builder remains available; the new temporal experiment uses its dataset/batching
+protocol with explicitly lagged inputs and its own chronological splits.
+
+The local checkout initially contained no datasets. Existing ingestion and OD scripts rebuilt the
+inputs from adopted PortWatch, Comtrade and EIA sources. Comtrade now caches bounded yearly
+requests, validates sea mode `2100`, normalizes resumed CSV/JSON schemas, and sends credentials in
+headers. OD fitting converged in 75 iterations with maximum relative marginal error `9.4e-7`;
+all OD checks passed. The rebuilt demand is **144,826,807 barrels/week**, not the original
+232,164,410 example. This is the current reproducible input vintage; earlier flow-model scores
+are not silently reused. The existing graph and flow calibration settings were preserved.
+
+### GNN: real observations, two training modes
+
+The real task is **one-week-ahead all-tanker transit prediction at the ten observed chokepoints**.
+No real labels are invented for unobserved lanes, crude cargo volumes or delays.
+Static geometry and node types are shared; OD demand and current tariff values are excluded
+from the real-only inputs. Three temporal edge inputs are added to G2's 11-column interface:
+previous-week transits, the previous four-week mean, and the 52-week lag (past expanding-mean
+fallback when a year is unavailable). Transit inputs and targets are divided by training-only
+per-corridor means. The model has 32 hidden units and three message-passing layers.
+Only observed transit targets contribute to real-data loss.
+
+The solver stores both travel directions in each physical edge. G2 therefore passes messages
+at both endpoints. A signed incoming-minus-outgoing loss on the CSV's arbitrary orientation
+would be incorrect, so **directional flow conservation is not claimed**. The simulator surrogate
+reconciles volume/transit and transit/capacity identities on export. Its inferred stranded cargo
+is a connector-volume residual, and its anomaly field is a zero placeholder, not an observation;
+neither is independently supervised. The solver remains authoritative for scenario feasibility.
+
+**Real-only:** all optimization labels come from PortWatch. **Simulated-plus-real:** pretrain
+on single-edge flow scenarios, then fine-tune the same architecture on the same real-data
+training/validation splits. Simulator labels use training-only target scales. All 20 compound
+scenarios are excluded from pretraining and checkpoint selection. The simulator's later-vintage
+OD matrix and Red Sea calibration make mixed pretraining a **retrospective prior**, not a clean
+as-of-2021 information set. Geographic port selection is also retrospective.
+
+All runs use seeds **7, 19, 43**, a maximum of 150 pretraining/180 fine-tuning epochs,
+Adam at `0.001`, Huber loss, gradient clipping, and validation early stopping with patience 25.
+Predictions are averaged across all three declared seeds; no test-selected seed is reported.
+Previous observed test-week counts may feed the following week's forecast, as in a rolling
+one-week prediction; model weights remain frozen. PortWatch publication lag and historical
+revisions are not reconstructed, so these are observation-time backtests, not live release-time
+trading forecasts.
+
+| Event | Train through | Validation | Test Fridays | Chokepoint-week pairs |
+|---|---|---|---|---:|
+| Ever Given | 2020-12-25 | 2021-01-01–03-12 | 2021-03-19–04-09 | 40 |
+| Panama | 2023-04-28 | 2023-05-05–07-28 | 2023-08-04–12-29 | 220 |
+| Red Sea | 2023-07-28 | 2023-08-04–10-27 | 2024-03-01–06-28 | 180 |
+
+Each model uses only the past relative to its event; earlier events can appear in later-event
+training histories. Red Sea H1 observations are not used for temporal fine-tuning or checkpoint
+selection. Full seven-day weeks are required; missing weeks stay missing. These windows include
+pre/post disruption observations and are not identical to Deliverable 4's event-average windows.
+
+**RMSE, tanker transits/week; smaller is better:**
+
+| Event | Real-only GNN | Simulated + real GNN | Persistence | Seasonal |
+|---|---:|---:|---:|---:|
+| Ever Given | 25.20 | 25.16 | 26.90 | 31.94 |
+| Panama | 20.41 | 20.00 | 24.60 | 26.29 |
+| Red Sea | 24.52 | 27.09 | 23.11 | 53.87 |
+
+Mixed training improves on persistence by 6.5% for Ever Given and 18.7% for Panama, but loses
+by 17.2% on Red Sea. Real-only loses by 6.1% on Red Sea. Thus simulator pretraining does not
+uniformly improve real generalization. These few historical events, particularly four Ever Given
+weeks, do not establish performance on unseen disruptions or unobserved corridors.
+MAE, MAPE, zero-denominator counts, directional accuracy, seed variation and per-edge scores are
+in `gnn_evaluation_report.csv`, `gnn_seed_evaluation.csv`, and `gnn_evaluation_by_edge.csv`.
+Persistence predicts no change, so its sign-based directional accuracy is near zero by definition;
+its competitive RMSE is the more useful comparison.
+
+`physics_conditional` in the weekly scorecard applies the solver's crude percentage changes to
+training-period observed tanker means. It shares the GNN's weekly observations and units, but is
+a static estimate given the disruption, not a lag-only forecast. Do not call this a fair forecasting
+contest. The separate existing event-average protocol was rerun unchanged:
+
+| Deliverable 4 event-average window | Physics MAE | Physics RMSE | MAPE | Direction match |
+|---|---:|---:|---:|---:|
+| Ever Given peak | 23.628 | 31.794 | 23.42% | 80% |
+| Panama drought | 16.233 | 23.040 | 11.18% | 70% |
+| Red Sea H2 | 22.160 | 30.115 | 17.72% | 80% |
+
+Those numbers reproduce this run's `validation_report.csv`; they must not be compared directly
+with weekly GNN errors because averaging suppresses noise and the windows differ.
+
+### GNN: copying the solver is a separate test
+
+The separate simulator-only surrogate exports the 22-column `gnn_edge_predictions.parquet` for
+20 unseen compound closures and three historical scenario inputs. It is **not** the real-only
+forecaster and must not be described as a real-validated counterfactual model.
+The following scores use the reconciled, three-seed exported predictions on the 20 unseen
+compound cases (5,580 edge-scenario pairs), with the unchanged baseline as a comparator:
+
+| Target | MAE | RMSE | WAPE | RMSE skill over unchanged baseline |
+|---|---:|---:|---:|---:|
+| Oil volume, barrels/week | 500,036 | 2,113,152 | 17.9% | +10.3% |
+| Crude-equivalent tanker transits/week | 0.662 | 3.004 | 17.1% | +32.0% |
+| Utilization | 0.0089 | 0.1082 | 27.1% | −5.5% |
+| Delay, days | 0.0202 | 0.2671 | 64.6% | +4.7% |
+
+Closed edges have exactly zero volume and transits. WAPE divides total absolute error by total
+actual target magnitude, avoiding per-row division by zero. Delay is still weak; most edges have
+little delay, so a small MAE alone would be misleading. No claim of exact flow conservation,
+held-out-chokepoint generalization or validated unobserved-route outputs is made.
+
+### Price: an honest small-sample backtest
+
+The mean model predicts the deviation from last week's Brent price with standardized Ridge
+(`lambda = 10`, intercept unpenalized). Only lagged Brent, the trailing price-average gap, the
+previous observed Suez share and its lagged change enter the network model. The representation
+model adds eight GNN summaries. That GNN was trained before August 2022 and selected using
+validation through December 2022, before all price calibration/test weeks. Its embedding head is
+a fixed seeded projection of learned edge states, not an independently trained economic factor.
+
+All four models use **204 common fitting weeks through 2022-12-30**, **43 calibration weeks
+in January–October 2023**, and **35 test weeks, 2023-11-03 through 2024-06-28**. No model is
+refit on calibration/test prices. Scalers use fitting weeks only. Intervals use the finite-sample
+90th percentile of absolute calibration residuals, not the original unvalidated quantile-IRLS
+implementation. Serial dependence and regime changes limit coverage guarantees.
+
+| Model | MAE, $/bbl | RMSE, $/bbl | RMSE skill vs random walk | 90% interval coverage | Mean interval width, $/bbl |
+|---|---:|---:|---:|---:|---:|
+| Random walk | 1.990 | 2.463 | — | 100.0% | 10.572 |
+| AR(1) | 1.970 | 2.446 | +0.7% | 100.0% | 10.164 |
+| Observed network + AR anchor | 1.895 | 2.400 | +2.6% | 97.1% | 10.115 |
+| Network + GNN summaries | 1.907 | 2.425 | +1.6% | 97.1% | 9.803 |
+
+The network model has the lowest error in this window, but **the gain is not established as
+statistically reliable**. A paired circular four-week block bootstrap (2,000 draws, fixed seed)
+gives a 95% interval of **[−$0.260, +$0.125]/bbl** for its RMSE minus random-walk RMSE.
+Both signs are included. This short historical backtest is evidence of a modest possible signal,
+not a reliable oil-price forecasting advantage. Adding GNN summaries does not improve on the
+observed-network model here. Complete predictions and intervals are exported, not just averages.
+
+### Shipping costs and scenario interpretation
+
+Costs use the flow model's edge-specific cargo sizes, with the configured cargo assumption only
+on idle edges. Recovering baseline tolls subtracts both sailing and delay costs, preventing delay
+from being charged twice. Both cost scripts call the same implementation. Fleet voyage cost and
+days sum all route legs and divide by served barrels (half the sum of connector flows), so splitting
+a lane into more edges cannot change the answer. The original edge-traversal denominator was an
+average leg, not a complete voyage. Charter-rate bands are assumptions, not statistical intervals.
+
+In this data vintage, fully closing Suez changes average network cost by **+$0.023 / +$0.046 /
++$0.086 per served barrel** at $35k/$50k/$75k per day. These are global averages across the
+whole modeled network, not surcharges for a particular Europe–Asia voyage. They should not be
+forced to match the old $1.50–$3.50 corridor illustration. Costs exclude external freight-market
+responses, and a scenario that strands demand changes the population of served voyages.
+
+History observes the all-tanker Suez/Cape share, not global route days, rerouted barrel-miles or
+freight costs. Those historical route fields remain missing instead of being fabricated. Scenario
+shares apply solver percentage changes to January–October 2023 observed tanker means before
+forming the ratio, avoiding a crude-only/all-tanker population mismatch.
+
+`brent_scenario_impacts.parquet` reports **conditional statistical sensitivities**, with explicit
+interpretation and extrapolation flags. It is not a causal estimate or a forecast. Negative
+associations are retained rather than forced to expected signs. The observational regression
+cannot identify a freight pass-through or a Hormuz supply-risk premium; those decomposition
+fields are missing and `causal_decomposition_identified = False`. A physically meaningful
+scenario oil-price impact therefore remains unsupported by these data. Do not present these
+conditional sensitivities as dollar losses caused by a canal closure. The displayed residual
+bands describe forecast noise; they do not cover uncertainty in causal or out-of-support effects.
+The current-vintage scenario regression is fitted separately from the historical backtest, reserving
+the latest 52 observed weeks for its own residual calibration. Its fit/calibration dates and radius
+are recorded in `scenario_price_calibration.csv`; a 2023 radius is not reused after refitting.
+
+### Reproduction and verification
+
+See [`scripts/README.md`](../scripts/README.md#deliverable-5-reproduction) for the complete run
+order and tested package versions. All datasets, checkpoints, loss curves, per-seed predictions,
+run manifests and scorecards remain under ignored `data/`; credentials and data are never committed.
+The script outputs include 21 event/pretraining checkpoints plus the frozen price representation.
+
+Checks passed for finite tensors, closed-edge zero flow, transit-label mapping, annual-to-weekly
+conversion, OD marginals, future-data perturbation invariance, forecast-origin lagging, cost/delay
+identity, voyage-segmentation invariance, identical cost/index outputs, and ordered nonnegative
+price intervals. The original G1 builder and G2 forward/backward smoke test also run.
+The retrospective design and the failed Red Sea/price-significance claims are part of the result,
+not hidden unfinished validations. Directional conservation, live release-time forecasting,
+causal scenario Brent impacts, and unobserved-route validation remain outside what this evidence
+supports; the scenario surrogate should remain experimental.
