@@ -27,13 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.flow_model.scenario_engine import (
-    event_scenario_params,
-    event_scenarios,
-    get_baseline,
-    load_params,
-    run_scenario,
-)
+from scripts.flow_model.scenario_engine import event_scenarios, get_baseline, load_params, run_scenario
 from scripts.validation.validation_targets import build_validation_targets
 
 INTERIM_DIR = ROOT / "data" / "interim"
@@ -53,18 +47,12 @@ def validate_events() -> pd.DataFrame:
 
     params = load_params()
     scenarios = event_scenarios(params)
-    scen_params = event_scenario_params()
     base_df, _ = get_baseline(None)
     base_tr_map = base_df.set_index("edge_id")["tanker_transits"].to_dict()
 
     rows = []
     for window_id, scenario_id in EVAL_WINDOWS.items():
-        mod_df, _ = run_scenario(
-            scenarios[scenario_id],
-            scenario_id=window_id,
-            save_files=True,
-            params_override=scen_params.get(scenario_id) or None,
-        )
+        mod_df, _ = run_scenario(scenarios[scenario_id], scenario_id=window_id, save_files=True)
         mod_map = mod_df.set_index("edge_id")
 
         ev_obs = obs_df[obs_df["scenario_id"] == window_id]

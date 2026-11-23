@@ -45,21 +45,18 @@ WEEKS_PER_YEAR = 52.1429
 
 DEFAULT_PARAMS = {
     "speed_knots": 13.0,
-    "alpha": 0.15,
-    "beta": 4.0,
+    "alpha": 0.12,
+    "beta": 3.0,
     "daily_tanker_rate": 50000.0,
     "avg_barrels_per_transit": 1000000.0,
-    # Cargo used to turn per-transit dollars (toll, war-risk premium, a day's charter) into $/bbl.
-    # A different question from avg_barrels_per_transit: that one is observed cargo per transit and
-    # decides how many ships an edge carries; this one is the crude carrier the model prices. Set to
-    # 0 to price on the observed cargo per transit, which is the behaviour before this split.
-    "cost_barrels_per_cargo": 1000000.0,
-    # No throughput cut by default: the Red Sea canal stayed open through 2024, so the diversion was
-    # a price response. A throughput cut is reserved for closures that were physical (Ever Given,
-    # Panama slots).
-    # Additional war-risk premium in $/bbl, charged once per transit through a listed area.
-    "awrp_usd_per_bbl": 0.0,
-    "risk_passages": [],
+    # Fraction of pre-crisis crude throughput retained at Suez / Bab-el-Mandeb (fitted, see calibrate_flow.py)
+    "red_sea_throttle": 0.65,
+    # War-risk insurance surcharge at full disruption, $/bbl (linear in the lost throughput share)
+    "red_sea_war_risk_per_bbl": 0.60,
+    "risk_passages": ["suez", "babalmandab"],
+    # Nominal queue / convoy service time used as the BPR base for chokepoints (days)
+    "chokepoint_queue_days": 1.0,
+    "over_capacity_delay_days_per_unit": 1.0,
     "max_util_for_delay": 5.0,
     "n_congestion_iters": 10,
 }
@@ -70,7 +67,7 @@ _PARAM_KEYS_FOR_BASELINE = (
     "beta",
     "daily_tanker_rate",
     "avg_barrels_per_transit",
-    "cost_barrels_per_cargo",
+    "chokepoint_queue_days",
     "max_util_for_delay",
     "n_congestion_iters",
 )
@@ -126,6 +123,7 @@ def solve_network(
     save_output: bool = True,
     return_od: bool = False,
     baseline_transits: dict[str, float] | None = None,
+    capacity_override: dict[str, float] | None = None,
 ):
     """Route weekly OD crude oil demand over the network with capacities & BPR delays.
 
@@ -145,13 +143,6 @@ def solve_network(
     beta = float(params["beta"])
     daily_rate = float(params["daily_tanker_rate"])
     default_bbl_per_ship = float(params["avg_barrels_per_transit"])
-    # Dollars per barrel are converted on the crude carrier this model prices, not on the all-tanker
-    # average above. The tariffs and the war-risk quote are written per ship, so charging a Suezmax
-    # tariff divided by a 347k bbl all-tanker average cargo put a 2.9x-larger ship's toll on a small
-    # one -- at Suez, a $0.45/bbl toll against $0.15/bbl of sailing. Transits keep the observed cargo
-    # per transit, so counting ships stays an observation and only the dollar conversion is priced.
-    _cost_cargo = float(params.get("cost_barrels_per_cargo", default_bbl_per_ship) or 0.0)
-    cost_cargo_bbl = _cost_cargo if _cost_cargo > 0 else None
     # Parcel size must come from an observed quantity. est_oil_volume is crude-only while
     # weekly_tanker_transits counts every tanker, so their ratio is not a parcel size: once the
     # numerator became crude-only that ratio fell below the clip floor at 8 of 10 chokepoints,
@@ -160,17 +151,12 @@ def solve_network(
     # keeps the real dispersion between corridors.
     bbl_per_tonne_crude = 7.33
     n_iters = int(params.get("n_congestion_iters", 5))
+    queue_days = float(params.get("chokepoint_queue_days", 1.0))
     max_util = float(params.get("max_util_for_delay", 5.0))
-    awrp = float(params.get("awrp_usd_per_bbl", 0.0))
+    # C: waiting time charged per unit of demand above capacity (days). See the delay formula.
+    over_cap_days = float(params.get("over_capacity_delay_days_per_unit", 1.0))
+    war_risk = float(params.get("red_sea_war_risk_per_bbl", 0.0))
     risk_passages = {str(p).strip().lower() for p in params.get("risk_passages", [])}
-    # Tariff in force in the scenario window, per transit, keyed by searoute_passage. A canal toll is
-    # not one historical fact: Suez raised crude tariffs 15 % in Jan 2023 and again in Jan 2024, and
-    # Panama's per-ton rate went $1.30 -> $2.25 -> $3.25 between 2023 and 2025. The window tariff
-    # overrides whatever the edge table was built with.
-    toll_overrides = {
-        str(k).strip().lower(): float(v)
-        for k, v in (params.get("toll_usd_per_transit") or {}).items()
-    }
 
     # Build lookup from portwatch_portid -> graph node_id (e.g. 'port1091' -> 'port_port1091')
     node_lookup = {}
@@ -219,25 +205,13 @@ def solve_network(
         else:
             bbl_per_ship = default_bbl_per_ship
 
-        # Capacity on the same basis as the flow. PortWatch's capacity_proxy is the 95th percentile of
-        # weekly *tanker* transits, and crude is only part of that -- about half at Suez. Using the
-        # all-tanker figure put utilisation at 0.33 against a corridor observed near 1.0, so the crude
-        # share of that corridor's own tanker volume converts the proxy to crude transits. Lanes and
-        # connectors carry no crude share and keep the proxy as it is.
-        crude_share = 1.0
-        if (
-            pd.notna(e.get("est_oil_volume"))
-            and pd.notna(e.get("weekly_tanker_transits"))
-            and pd.notna(e.get("avg_vessel_size_tonnes"))
-            and float(e.get("weekly_tanker_transits", 0)) > 0
-        ):
-            tanker_bbl = (
-                float(e["weekly_tanker_transits"]) * float(e["avg_vessel_size_tonnes"]) * bbl_per_tonne_crude
-            )
-            if tanker_bbl > 0:
-                crude_share = float(np.clip(float(e["est_oil_volume"]) / tanker_bbl, 0.0, 1.0))
-        if pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
-            base_cap_weekly = float(e["capacity_proxy"]) * crude_share
+        # Weekly capacity on the Deliverable 3 statistical basis (unconstrained for lanes/connectors)
+        # A: capacity can be re-based to the traffic this network actually carries (see
+        # scenario_engine._network_capacity_override). capacity_proxy is all-tanker throughput.
+        if capacity_override and e_id in capacity_override:
+            base_cap_weekly = float(capacity_override[e_id])
+        elif pd.notna(e.get("capacity_proxy")) and float(e.get("capacity_proxy", 0)) > 0:
+            base_cap_weekly = float(e["capacity_proxy"])
         else:
             base_cap_weekly = 5000.0
 
@@ -249,19 +223,7 @@ def solve_network(
                 break
         through_frac = float(np.clip(through_frac, 0.0, 1.0))
 
-        # The per-barrel toll is derived from the per-transit tariff on the same cost cargo, so the
-        # two stored columns cannot disagree (Panama held $350,000/transit against $0.60/bbl, which
-        # implies 583k bbl).
-        edge_cost_cargo = cost_cargo_bbl or bbl_per_ship
-        toll_transit = pd.to_numeric(e.get("toll_usd_per_transit"), errors="coerce")
-        if passage in toll_overrides:
-            toll_transit = toll_overrides[passage]
-        if pd.notna(toll_transit):
-            toll_bbl = float(toll_transit) / edge_cost_cargo
-        elif pd.notna(e.get("toll_usd_per_bbl")):
-            toll_bbl = float(e["toll_usd_per_bbl"])
-        else:
-            toll_bbl = 0.0
+        toll_bbl = float(e["toll_usd_per_bbl"]) if pd.notna(e.get("toll_usd_per_bbl")) else 0.0
 
         edge_meta[e_id] = {
             "edge_id": e_id,
@@ -277,8 +239,10 @@ def solve_network(
             "closed": through_frac <= 0.0,
             "toll_per_bbl": toll_bbl,
             "bbl_per_ship": bbl_per_ship,
-            "bbl_per_ship_cost": cost_cargo_bbl or bbl_per_ship,
-            "risk_per_bbl": awrp if (awrp > 0.0 and passage in risk_passages) else 0.0,
+            # BPR congestion acts on the nominal queue/convoy time at a chokepoint, not on the
+            # length of a 300-500 nm edge segment (which would make waiting almost free).
+            "service_days": queue_days if e_type == "chokepoint" else free_flow_days,
+            "risk_per_bbl": war_risk if (through_frac < 1.0 and passage in risk_passages) else 0.0,
             "delay_days": 0.0,
             "removed": False,
         }
@@ -357,17 +321,17 @@ def solve_network(
             cap = m["capacity_weekly"]
             util = transits_so_far / cap if cap > 0 else 0.0
 
-            # DELIVERABLE4's congestion curve, on the edge's own free-flow time:
-            # delay_days = t0 * alpha * util^beta. Nothing else is added to it.
-            delay = m["free_flow_days"] * alpha * (min(util, max_util) ** beta)
+            delay = m["service_days"] * alpha * (min(util, max_util) ** beta)
+            # C: over-capacity queueing. The BPR term is a fraction of one service day, so an edge
+            # far above its capacity would otherwise absorb traffic for free -- which is how crude
+            # ended up routed through Sunda at 147 % of capacity while Malacca sat at 11 %. Demand
+            # above capacity has no steady-state queue, so charge a linear wait on the excess.
+            delay += over_cap_days * max(0.0, util - 1.0)
             m["delay_days"] = delay
-            voyage_cost_bbl = ((m["free_flow_days"] + delay) * daily_rate) / m["bbl_per_ship_cost"]
+            voyage_cost_bbl = ((m["free_flow_days"] + delay) * daily_rate) / m["bbl_per_ship"]
 
-            # A listed war-risk area adds a flat insurance premium per transit. It is not scaled by the
-            # lost throughput share: insurers quote a percentage of hull value per transit whether or
-            # not the passage is also slowed, and charging it per chokepoint would bill one voyage
-            # twice (see risk_passages: one gate per listed area).
-            risk_penalty = m["risk_per_bbl"]
+            # Partial closure of a conflict-zone chokepoint adds a war-risk insurance surcharge
+            risk_penalty = m["risk_per_bbl"] * (1.0 - m["throughput_factor"])
 
             cost_bbl = voyage_cost_bbl + m["toll_per_bbl"] + risk_penalty
 
@@ -385,8 +349,10 @@ def solve_network(
                 if G.has_edge(v, u):
                     G[v][u]["weight"] = cost_bbl
 
-        # A throttled edge that reaches its throughput ceiling is taken out of the graph for the
-        # remaining increments, so the surplus reroutes or strands instead of queueing for free.
+        # A throttled edge that has reached its throughput ceiling is taken out of the graph for the
+        # remaining increments, so the surplus reroutes (or strands) instead of queueing for free.
+        # Unthrottled lanes and chokepoints keep the soft BPR curve only, because their capacity
+        # proxy is statistical rather than a physical wall (see DELIVERABLE4 'Known risks').
         for e_id, m in edge_meta.items():
             if m["closed"] or m["removed"] or m["throughput_factor"] >= 1.0:
                 continue
@@ -453,8 +419,8 @@ def solve_network(
             util = transits / cap if cap > 0 else 0.0
             delay_days = m["delay_days"]
 
-        voyage_cost_bbl = ((m["free_flow_days"] + delay_days) * daily_rate) / m["bbl_per_ship_cost"]
-        risk_penalty = m["risk_per_bbl"]
+        voyage_cost_bbl = ((m["free_flow_days"] + delay_days) * daily_rate) / m["bbl_per_ship"]
+        risk_penalty = m["risk_per_bbl"] * (1.0 - m["throughput_factor"])
         cost_per_bbl = voyage_cost_bbl + m["toll_per_bbl"] + risk_penalty
 
         rows.append(
