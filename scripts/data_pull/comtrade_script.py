@@ -2,13 +2,12 @@
 UN Comtrade crude oil (HS 2709), annual 2019–2025.
 
 HOW TO RUN (from the repository root):
-1. pip install python-dotenv
-2. pip install comtradeapicall
-3. pip install -r requirements.txt
-4. Create .env file and set SUBSCRIPTION_KEY.
-5. Run python scripts/comtrade_script.py
+1. Install the existing table stack: requests pandas pyarrow python-dotenv.
+2. Set SUBSCRIPTION_KEY in the process environment.
+3. Run python scripts/data_pull/comtrade_script.py
 
-Raw annual API responses (2019-2025) are cached in data/raw/.
+Raw annual API responses (2019-2025) are cached by year in data/raw/.
+Requests use bounded timeouts and the key is sent in a header, never a URL.
 Cleaned Parquet tables are written to data/interim/ (and data/processed/ alongside CSVs).
 Reruns use cached responses and make no API calls unless files are missing.
 To refresh a cached year, delete the corresponding raw CSV and rerun.
@@ -19,7 +18,8 @@ from pathlib import Path
 import os
 
 import pandas as pd
-import comtradeapicall
+import time
+import requests
 from dotenv import load_dotenv
 
 
@@ -118,7 +118,7 @@ def validate_response(df, label):
 def fetch_annual(mot_code, label):
     cache_path = RAW_DIR / f"comtrade_{label}_annual.csv"
 
-    if cache_path.exists():
+    if cache_path.exists() and (label != "sea" or pd.read_csv(cache_path, usecols=["motCode"]).motCode.eq(2100).all()):
         print(f"Loading cached {label} data...")
         data = pd.read_csv(cache_path, low_memory=False)
 
@@ -133,13 +133,55 @@ def fetch_annual(mot_code, label):
                 "SUBSCRIPTION_KEY is missing. Add it to .env."
             )
 
-        data = comtradeapicall.getFinalData(
-            subscription_key,
-            freqCode="A",
-            period="2019,2020,2021,2022,2023,2024,2025",
-            motCode=mot_code,
-            **COMMON_PARAMS,
-        )
+        # Large multi-year requests time out. Cache bounded years independently
+        # so an interrupted download resumes without spending quota again.
+        frames = []
+        for year in range(2019, 2026):
+            year_path = RAW_DIR / f"comtrade_{label}_{year}.csv"
+            if year_path.exists() and (label != "sea" or pd.read_csv(year_path, usecols=["motCode"]).motCode.eq(2100).all()):
+                frame = pd.read_csv(year_path, low_memory=False)
+            else:
+                params = dict(period=str(year), cmdCode="2709", flowCode="X,M",
+                              format="JSON", breakdownMode="plus", includeDesc="true",
+                              maxRecords=100000)
+                if mot_code is not None:
+                    params["motCode"] = mot_code
+                for attempt in range(3):
+                    try:
+                        response = requests.get(
+                            "https://comtradeapi.un.org/data/v1/get/C/A/HS",
+                            params=params,
+                            headers={"Ocp-Apim-Subscription-Key": subscription_key},
+                            timeout=(15, 90),
+                        )
+                        if response.status_code == 200:
+                            body = response.json()
+                            break
+                        if response.status_code not in (429, 500, 502, 503, 504):
+                            raise RuntimeError(f"Comtrade HTTP {response.status_code}")
+                    except (requests.RequestException, ValueError):
+                        if attempt == 2:
+                            raise RuntimeError(f"Comtrade {label} {year}: request failed") from None
+                    time.sleep(2 ** attempt)
+                else:
+                    raise RuntimeError(f"Comtrade {label} {year}: retry limit reached")
+                frame = pd.json_normalize(body.get("data", []))
+                if frame.empty or len(frame) >= 100000:
+                    raise RuntimeError(f"Comtrade {label} {year}: empty or potentially truncated response")
+                if label == "sea" and not frame.motCode.eq(2100).all():
+                    raise RuntimeError("Comtrade returned a non-sea transport mode")
+                missing = REQUIRED_COLUMNS - set(frame)
+                if missing:
+                    raise RuntimeError(f"Comtrade {label} {year}: missing columns {sorted(missing)}")
+                if set(pd.to_numeric(frame.refYear).astype(int)) != {year}:
+                    raise RuntimeError(f"Comtrade {label} {year}: wrong response year")
+                temporary_year = year_path.with_suffix(f".{os.getpid()}.tmp")
+                frame.to_csv(temporary_year, index=False)
+                temporary_year.replace(year_path)
+                time.sleep(1.1)
+            frames.append(frame)
+            print(f"  {label} {year}: {len(frame):,} rows", flush=True)
+        data = pd.concat(frames, ignore_index=True)
 
         validate_response(data, label)
 
@@ -156,6 +198,10 @@ def fetch_annual(mot_code, label):
 # Add "barrels" column and keep only relevant columns
 def preprocess_trade(raw):
     cleaned = raw[KEEP_COLUMNS].copy()
+    # Fresh JSON uses string periods; CSV caches infer integers. Normalize the
+    # schema before concatenation reaches Arrow, including mixed resume runs.
+    for column in ['refYear', 'period', 'reporterCode', 'partnerCode', 'partner2Code', 'motCode', 'mosCode']:
+        cleaned[column] = pd.to_numeric(cleaned[column], errors='raise').astype('Int64')
     cleaned["barrels"] = (
         pd.to_numeric(cleaned["netWgt"], errors="coerce")
         / 1000
