@@ -14,6 +14,7 @@ graph tables these scripts read and write (Deliverable 4 loads `config/nodes.csv
 | `od_matrix/` | `od_country_flows.py`, `od_port_shares.py`, `od_crude_share.py`, `od_matrix.py`, `od_checks.py` | Build and check the OD matrix in `data/interim/` |
 | `flow_model/` | `flow_solver.py`, `edge_metrics.py`, `scenario_engine.py`, `gnn_sim_generator.py` | Route the OD matrix over the graph, compute edge metrics, run scenarios and criticality |
 | `validation/` | `validation_targets.py`, `calibrate_flow.py`, `validate_events.py`, `validate_gfw_delays.py` | Observed benchmarks, Red Sea calibration, event validation |
+| `gnn/` | `gnn_model.py` | Edge-centric GNN (plain PyTorch): 4 per-edge predictions plus an 8-value graph embedding (Deliverable 5, G2) |
 
 ## Technology and algorithms
 
