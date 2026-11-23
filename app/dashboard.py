@@ -154,123 +154,37 @@ def simulate_scenario_flows(
     alpha: float,
     beta: float,
 ):
-    """Run live scenario solver if available, or fast analytical BPR diversion model on edges.csv."""
-    try:
-        from scripts.flow_model.scenario_engine import run_scenario
-        if (INTERIM_DIR / "od_matrix.csv").exists():
-            df_scen, summary = run_scenario(
-                throttles=throttles,
-                scenario_id="live_dashboard",
-                params_override={"alpha": alpha, "beta": beta},
-                save_files=False,
-            )
-            keep_cols = ["edge_id", "from_lat", "from_lon", "to_lat", "to_lon", "alternative_group", "route_segments", "geometry"]
-            avail_cols = [c for c in keep_cols if c in edges.columns]
-            df_scen = df_scen.merge(edges[avail_cols], on="edge_id", how="left")
+    """Run the full solver and report failures without substitute results."""
+    from scripts.flow_model.scenario_engine import run_scenario
 
-            rerouted_mbd = float(df_scen.loc[df_scen["delta_volume_bbl"] > 0, "delta_volume_bbl"].sum() / 7.0 / 1e6)
-            stranded_mbd = float(summary.get("stranded_barrels", 0.0) / 7.0 / 1e6)
-            cp_transits = float(df_scen.loc[df_scen["edge_type"] == "chokepoint", "tanker_transits"].sum())
-            base_cp_transits = float(
-                (df_scen.loc[df_scen["edge_type"] == "chokepoint", "tanker_transits"]
-                 - df_scen.loc[df_scen["edge_type"] == "chokepoint", "delta_transits"]).sum()
-            )
-            summary["cp_transits_wk"] = round(cp_transits, 1)
-            summary["cp_delta_transits_wk"] = round(cp_transits - base_cp_transits, 1)
-            summary["rerouted_mbd"] = round(rerouted_mbd, 2)
-            summary["stranded_mbd"] = round(stranded_mbd, 2)
-            return df_scen, summary
-    except Exception:
-        pass
-
-    # Standalone physics engine built directly on edges.csv baseline columns
-    df = edges.copy()
-    df["capacity_weekly"] = pd.to_numeric(df.get("capacity_proxy"), errors="coerce").fillna(400.0)
-    df["base_transits"] = pd.to_numeric(df.get("weekly_tanker_transits"), errors="coerce").fillna(
-        np.where(df["edge_type"] == "lane", 85.0, 18.0)
+    df_scen, summary = run_scenario(
+        throttles=throttles,
+        scenario_id="live_dashboard",
+        params_override={"alpha": alpha, "beta": beta},
+        save_files=False,
     )
-    df["base_oil_bbl"] = pd.to_numeric(df.get("est_oil_volume"), errors="coerce").fillna(
-        df["base_transits"] * 650_000.0
+    keep_cols = ["edge_id", "from_lat", "from_lon", "to_lat", "to_lon", "alternative_group", "route_segments", "geometry"]
+    avail_cols = [c for c in keep_cols if c in edges.columns]
+    df_scen = df_scen.merge(edges[avail_cols], on="edge_id", how="left")
+
+    rerouted_mbd = float(df_scen.loc[df_scen["delta_volume_bbl"] > 0, "delta_volume_bbl"].sum() / 7.0 / 1e6)
+    stranded_mbd = float(summary.get("stranded_barrels", 0.0) / 7.0 / 1e6)
+    cp_transits = float(df_scen.loc[df_scen["edge_type"] == "chokepoint", "tanker_transits"].sum())
+    base_cp_transits = float(
+        (df_scen.loc[df_scen["edge_type"] == "chokepoint", "tanker_transits"]
+         - df_scen.loc[df_scen["edge_type"] == "chokepoint", "delta_transits"]).sum()
     )
-    df["free_flow_days"] = pd.to_numeric(df.get("typical_transit_days"), errors="coerce").fillna(
-        pd.to_numeric(df["length_nm"], errors="coerce") / (13.0 * 24.0)
-    )
+    summary["cp_transits_wk"] = round(cp_transits, 1)
+    summary["cp_delta_transits_wk"] = round(cp_transits - base_cp_transits, 1)
+    summary["rerouted_mbd"] = round(rerouted_mbd, 2)
+    summary["stranded_mbd"] = round(stranded_mbd, 2)
+    base_suez = df_scen.loc[df_scen["searoute_passage"] == "suez"]
+    base_cape = df_scen.loc[df_scen["searoute_passage"] == "south_africa"]
+    suez = float((base_suez["tanker_transits"] - base_suez["delta_transits"]).sum())
+    cape = float((base_cape["tanker_transits"] - base_cape["delta_transits"]).sum())
+    summary["baseline_suez_share"] = suez / (suez + cape) if suez + cape else 0.0
+    return df_scen, summary
 
-    df["throttle_factor"] = 1.0
-    for idx, row in df[df["edge_type"] == "chokepoint"].iterrows():
-        pas = str(row.get("searoute_passage", "")).strip()
-        if pas in throttles:
-            df.at[idx, "throttle_factor"] = float(throttles[pas])
-
-    df["tanker_transits"] = df["base_transits"].copy()
-    df["oil_volume_bbl"] = df["base_oil_bbl"].copy()
-
-    stranded_bbl = 0.0
-    rerouted_bbl = 0.0
-    for grp, g_rows in df[df["edge_type"] == "chokepoint"].groupby("alternative_group"):
-        if grp == "none" or pd.isna(grp):
-            for idx, r in g_rows.iterrows():
-                th = df.at[idx, "throttle_factor"]
-                lost_bbl = r["base_oil_bbl"] * (1.0 - th)
-                df.at[idx, "oil_volume_bbl"] = r["base_oil_bbl"] * th
-                df.at[idx, "tanker_transits"] = r["base_transits"] * th
-                stranded_bbl += lost_bbl
-        else:
-            displaced_tr = 0.0
-            displaced_bbl = 0.0
-            for idx, r in g_rows.iterrows():
-                th = df.at[idx, "throttle_factor"]
-                if th < 1.0:
-                    displaced_tr += r["base_transits"] * (1.0 - th)
-                    displaced_bbl += r["base_oil_bbl"] * (1.0 - th)
-                    df.at[idx, "tanker_transits"] = r["base_transits"] * th
-                    df.at[idx, "oil_volume_bbl"] = r["base_oil_bbl"] * th
-
-            alt_candidates = g_rows[
-                df.loc[g_rows.index, "throttle_factor"] == df.loc[g_rows.index, "throttle_factor"].max()
-            ]
-            if not alt_candidates.empty and df.loc[alt_candidates.index[0], "throttle_factor"] > 0:
-                alt_idx = alt_candidates.index[0]
-                alt_th = df.at[alt_idx, "throttle_factor"]
-                scale_corr = 0.55 if grp == "asia_europe" else 1.0
-                added_bbl = displaced_bbl * scale_corr * alt_th
-                df.at[alt_idx, "tanker_transits"] += displaced_tr * scale_corr * alt_th
-                df.at[alt_idx, "oil_volume_bbl"] += added_bbl
-                rerouted_bbl += added_bbl
-                stranded_bbl += displaced_bbl * scale_corr * (1.0 - alt_th)
-            else:
-                stranded_bbl += displaced_bbl * 0.55
-
-    eff_cap = np.maximum(df["capacity_weekly"] * np.maximum(df["throttle_factor"], 0.05), 1.0)
-    df["utilization"] = np.where(df["throttle_factor"] > 0, df["tanker_transits"] / eff_cap, 0.0)
-    df["delay_days"] = df["free_flow_days"] * alpha * (np.clip(df["utilization"], 0.0, 4.0) ** beta)
-    df["delta_transits"] = df["tanker_transits"] - df["base_transits"]
-    df["delta_volume_bbl"] = df["oil_volume_bbl"] - df["base_oil_bbl"]
-
-    suez_tr = float(df.loc[df["searoute_passage"] == "suez", "tanker_transits"].sum())
-    cape_tr = float(df.loc[df["searoute_passage"] == "south_africa", "tanker_transits"].sum())
-    suez_share = suez_tr / max(suez_tr + cape_tr, 1.0)
-
-    base_suez_tr = float(df.loc[df["searoute_passage"] == "suez", "base_transits"].sum())
-    base_cape_tr = float(df.loc[df["searoute_passage"] == "south_africa", "base_transits"].sum())
-    base_suez_share = base_suez_tr / max(base_suez_tr + base_cape_tr, 1.0)
-
-    extra_days = max(0.0, (base_suez_share - suez_share) * 13.8) + float(
-        df.loc[df["edge_type"] == "chokepoint", "delay_days"].mean()
-    )
-    cp_transits = float(df.loc[df["edge_type"] == "chokepoint", "tanker_transits"].sum())
-    base_cp_transits = float(df.loc[df["edge_type"] == "chokepoint", "base_transits"].sum())
-
-    summary = {
-        "cp_transits_wk": round(cp_transits, 1),
-        "cp_delta_transits_wk": round(cp_transits - base_cp_transits, 1),
-        "rerouted_mbd": round((rerouted_bbl / 7.0) / 1e6, 2),
-        "stranded_barrels": round(stranded_bbl, 0),
-        "stranded_mbd": round((stranded_bbl / 7.0) / 1e6, 2),
-        "suez_tanker_share": round(suez_share, 4),
-        "extra_voyage_days": round(extra_days, 2),
-    }
-    return df, summary
 
 
 def build_kepler_config() -> dict:
@@ -470,10 +384,26 @@ def render_map(nodes_df: pd.DataFrame, edges_df: pd.DataFrame, use_kepler: bool 
             "style": {"backgroundColor": "#0f172a", "color": "#f8fafc", "fontSize": "12px"},
         },
     )
-    st.pydeck_chart(deck, use_container_width=True, height=560)
+    st.pydeck_chart(deck, width="stretch", height=560)
 
 
 def main():
+    from app.cloud_data import FILES, restore_bundle
+
+    try:
+        bundle_url = st.secrets.get("DATA_BUNDLE_URL", "")
+    except FileNotFoundError:
+        bundle_url = ""
+    if bundle_url:
+        try:
+            with st.spinner("Loading verified dashboard data..."):
+                restore_bundle(ROOT, bundle_url, st.secrets.get("DATA_BUNDLE_SHA256", ""))
+        except Exception:
+            st.error("Dashboard data could not be verified. No substitute simulation was used.")
+            st.stop()
+    if any(not (ROOT / name).is_file() for name in FILES):
+        st.error("Dashboard data is not configured. Supply DATA_BUNDLE_URL and DATA_BUNDLE_SHA256 in Streamlit Secrets.")
+        st.stop()
     nodes, edges = load_network_with_sea_routes()
 
     st.sidebar.title("⚓ Blue Vector Controls")
@@ -482,7 +412,7 @@ def main():
     use_kepler = st.sidebar.toggle("Use Kepler.gl Engine (GeoJSON Edges Pre-Loaded)", value=False)
 
     preset = st.sidebar.selectbox(
-        "Historical Disruption Preset",
+        "Illustrative Disruption Preset",
         [
             "Pre-Crisis Baseline (All Open)",
             "2023–24 Red Sea / Houthi Crisis",
@@ -527,11 +457,17 @@ def main():
         alpha = st.slider("BPR Alpha (Scale)", 0.05, 0.35, 0.18, 0.01)
         beta = st.slider("BPR Beta (Steepness)", 2.0, 5.0, 3.8, 0.1)
 
-        st.form_submit_button("⚡ Apply Throttles & Update Map", use_container_width=True)
+        st.form_submit_button("⚡ Apply Throttles & Update Map", width="stretch")
 
-    scen_df, summary = simulate_scenario_flows(edges, throttles=throttles, alpha=alpha, beta=beta)
+    try:
+        with st.spinner("Running the network flow scenario..."):
+            scen_df, summary = simulate_scenario_flows(edges, throttles=throttles, alpha=alpha, beta=beta)
+    except Exception:
+        st.error("The full flow solver could not complete this scenario. No substitute results are displayed.")
+        st.stop()
 
     st.title("🚢 Blue Vector: Global Maritime Network & Disruption Simulator")
+    st.caption("Conditional flow scenarios using the full solver. Outputs are modeled, not observed crisis outcomes. GNN and price forecasts are not integrated in this view.")
     st.caption(
         f"**Active Scenario:** `{preset}`  |  **Topology:** 100 Tanker Ports, 42 Ocean Junctions, 10 Chokepoints, 279 Sea-Routed Edges"
     )
@@ -539,26 +475,26 @@ def main():
     # Deliverable 3 & 4 Physical Flow & Delay KPIs Only (No Oil Price Metrics)
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric(
-        "Chokepoint Tanker Flow",
-        f"{summary['cp_transits_wk']:,.0f} ships/wk",
+        "Chokepoint Crossings",
+        f"{summary['cp_transits_wk']:,.0f} transits/wk",
         f"{summary['cp_delta_transits_wk']:+.1f} vs. baseline",
     )
     k2.metric(
-        "Diverted / Rerouted Volume",
+        "Added Edge Traffic",
         f"{summary['rerouted_mbd']:.2f} mb/d",
-        "Shifted to alternative routes",
+        "Summed over edges; may count cargo repeatedly",
         delta_color="off",
     )
     k3.metric(
         "Extra Corridor Delay",
-        f"+{summary['extra_voyage_days']:.1f} days",
+        f"{(summary['extra_voyage_days'] if abs(summary['extra_voyage_days']) >= 0.05 else 0.0):+.1f} days",
         "Cape detour + BPR queue",
         delta_color="inverse",
     )
     k4.metric(
         "Suez / (Suez + Cape) Share",
         f"{summary['suez_tanker_share'] * 100:.1f}%",
-        f"{(summary['suez_tanker_share'] - 0.611) * 100:+.1f}% vs. baseline",
+        f"{(summary['suez_tanker_share'] - summary['baseline_suez_share']) * 100:+.1f} percentage points vs. baseline",
     )
     k5.metric(
         "Stranded Tanker Volume",
@@ -617,15 +553,15 @@ def main():
                     "delay_days": "Delay (d)",
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
-        st.markdown("#### 🔍 Live Model Insights")
+        st.markdown("#### Scenario interpretation")
         st.info(
-            "**How to Demo Live:** Select **2023–24 Red Sea / Houthi Crisis** (or adjust any chokepoint sliders and click "
-            "**⚡ Apply Throttles & Update Map**). Watch tanker traffic divert around the **Cape of Good Hope (`south_africa`)**, "
-            "pushing Cape utilization above `100%` and adding `+10–14` voyage days along true ocean corridors."
+            "Adjust throughput fractions and apply the scenario to explore modeled routing. "
+            "Preset values are illustrative inputs, not automatically measured historical restrictions. "
+            "Stranded demand refers to this network's fixed modeled demand, not measured lost global supply."
         )
 
 

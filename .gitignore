@@ -25,6 +25,7 @@ __pycache__/
 .venv/
 venv/
 .env
+.streamlit/secrets.toml
 .ipynb_checkpoints/
 
 # UN Comtrade datasets (keep local copies only)
