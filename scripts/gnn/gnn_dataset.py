@@ -1,4 +1,7 @@
-"""G1 dataset builder: turns the Deliverable 4 tables into GNN-ready tensors with leak-free splits.
+"""G1 scenario tensor builder: retrospective, event-excluded splits.
+
+For pre-event chronological forecasts, use scripts/gnn/train_gnn.py. Excluding
+event dates here does not exclude observations from later years.
 
 Run from the repository root, after Deliverable 4 has written its tables:
     python scripts/gnn/gnn_dataset.py        # builds every dataset from config/ + data/ and prints sizes
@@ -329,8 +332,8 @@ def _od_exports_imports(od_df, port_set, notes) -> Tuple[Optional[pd.Series], Op
         return None, None
     vol = _num(od_df[v])
     if "year" in v.lower():  # project time step is one week (section 2.2)
-        vol = vol / 52.0
-        log.info("OD volume column '%s' is annual; dividing by 52 to get barrels per week.", v)
+        vol = vol / 52.1429
+        log.info("OD volume column '%s' is annual; dividing by 52.1429 to get barrels per week.", v)
 
     def usable(e, i):
         # Accept the ids only if at least half the ports received volume; guards against a wrong id format.
@@ -575,7 +578,7 @@ def _is_held_out_week(date_str: str, holdout_windows: Sequence[Tuple[str, str, s
 def build_gnn_datasets(config_dir="config", data_dir="data", val_fraction: float = 0.15, seed: int = 42,
                        holdout_scenario_ids: Optional[set] = None,
                        holdout_windows: Sequence[Tuple[str, str, str]] = DEFAULT_HOLDOUT_WINDOWS) -> Dict[str, object]:
-    """Builds pretrain train/val, fine-tune train/val, and held-out scenario/observed datasets."""
+    """Build retrospective event-excluded datasets; use train_gnn for forward-only backtests."""
     cfg_p, d_p = Path(config_dir), Path(data_dir)
     proc, interim = d_p / "processed", d_p / "interim"
     holdout_ids = holdout_scenario_ids or set(DEFAULT_HOLDOUT_SCENARIO_IDS)
