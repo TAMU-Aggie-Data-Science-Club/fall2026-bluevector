@@ -71,6 +71,9 @@ Graph builders are in `scripts/graph/`, data pulls in `scripts/data_pull/`, port
 
 ## Deliverable 5 reproduction
 
+For a beginner-friendly explanation of the models, equations, and results, read
+[MODEL_METHODOLOGY.md](../MODEL_METHODOLOGY.md).
+
 Read [the executed results and limits](../deliverables/DELIVERABLE5.md#9-integration-results--2026-11-22)
 before presenting a model score. Temporal forecasts, solver imitation and conditional price
 sensitivities are different outputs. All artifacts stay under ignored `data/`; source code and
