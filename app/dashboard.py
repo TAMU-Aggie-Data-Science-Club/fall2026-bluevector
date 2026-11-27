@@ -2,14 +2,13 @@
 
 Architecture
 ------------
-* pydeck generates a valid deck.gl GlobeView HTML page via ``deck.to_html(as_string=True)``.
-* We inject glassmorphism overlay panels (pure CSS/JS) before ``</body>``.
-* All deck.gl picking is done by patching ``window.createDeck`` to capture the
-  deck instance and listening for clicks on the canvas.
-* Overlay actions (remove edge, model toggle, Hormuz mode) navigate the parent
-  window with ``?bv_action=…`` query params, which Streamlit picks up on rerun.
-* The iframe is sized to 100 vh via a tiny ``<script>`` that runs in the parent
-  document (injected via ``st.html``).
+* Builds a fully self-contained HTML page using deck.gl 8.9 loaded from CDN.
+  Pydeck is used ONLY for route geometry (searoute) — NOT for HTML output.
+  This avoids all pydeck iframe/viewport sizing issues.
+* The iframe self-resizes by patching window.frameElement.style.height from
+  inside the components.html call (same-origin, so this always works).
+* Overlay panels are pure HTML/CSS/JS positioned absolutely over the canvas.
+* Actions communicate back to Streamlit via URL query params (bv_action=…).
 
 Run:
     .venv/bin/streamlit run app/dashboard.py
@@ -23,7 +22,7 @@ import textwrap
 
 import numpy as np
 import pandas as pd
-import pydeck as pdk
+import pydeck as pdk          # used only for route geometry via searoute
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -38,9 +37,8 @@ ROOT = (
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-CONFIG_DIR   = ROOT / "config"
+CONFIG_DIR    = ROOT / "config"
 PROCESSED_DIR = ROOT / "data" / "processed"
-INTERIM_DIR  = ROOT / "data" / "interim"
 
 # ---------------------------------------------------------------------------
 # Page config — no sidebar chrome, full-bleed
@@ -52,38 +50,26 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Strip all Streamlit chrome so the globe is edge-to-edge
-st.html("""
-<style>
-  #MainMenu, header, footer { visibility: hidden; }
-  .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
-  section[data-testid="stMain"] > div { padding: 0 !important; }
-  div[data-testid="stHorizontalBlock"] { gap: 0 !important; }
-  iframe { display: block; border: none; }
-</style>
-""")
-
-# Resize the iframe to 100 vh after Streamlit renders it
-st.html("""
-<script>
-(function resizeGlobeIframe() {
-  const tryResize = () => {
-    // Find the globe iframe — it is the last iframe in the stMain section
-    const frames = document.querySelectorAll('section[data-testid="stMain"] iframe');
-    const iframe = frames[frames.length - 1];
-    if (!iframe) { setTimeout(tryResize, 100); return; }
-    const setH = () => { iframe.style.height = window.innerHeight + 'px'; iframe.style.width = '100%'; };
-    setH();
-    window.addEventListener('resize', setH);
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', tryResize);
-  } else {
-    tryResize();
-  }
-})();
-</script>
-""")
+# Strip every pixel of Streamlit chrome so the iframe can go truly full-bleed.
+# st.markdown(..., unsafe_allow_html=True) is the correct way to inject
+# page-level CSS — unlike st.html(), which creates its own sandboxed micro-frame.
+st.markdown(
+    """
+    <style>
+    #MainMenu, header, footer { visibility: hidden; }
+    .stApp { background: #020817; }
+    .block-container {
+        padding: 0 !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+    }
+    section[data-testid="stMain"] > div:first-child { padding: 0 !important; }
+    div[data-testid="stHorizontalBlock"] { gap: 0 !important; }
+    iframe { display: block !important; border: none !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -95,30 +81,28 @@ def split_antimeridian(coords: list) -> list:
     segments: list = []
     cur = [[float(coords[0][0]), float(coords[0][1])]]
     for i in range(1, len(coords)):
-        lon1, lat1 = float(coords[i - 1][0]), float(coords[i - 1][1])
-        lon2, lat2 = float(coords[i][0]),      float(coords[i][1])
+        lon1 = float(coords[i - 1][0]); lat1 = float(coords[i - 1][1])
+        lon2 = float(coords[i][0]);     lat2 = float(coords[i][1])
         if abs(lon1 - lon2) <= 180.0:
             cur.append([lon2, lat2])
         else:
             if lon1 > 0 and lon2 < 0:
                 d1 = 180.0 - lon1; d2 = lon2 + 180.0
-                lat_mid = round(lat1 + (lat2 - lat1) * (d1 / max(d1 + d2, 1e-6)), 4)
-                cur.append([180.0, lat_mid])
-                if len(cur) >= 2: segments.append(cur)
-                cur = [[-180.0, lat_mid], [lon2, lat2]]
+                lm = round(lat1 + (lat2 - lat1) * (d1 / max(d1 + d2, 1e-6)), 4)
+                cur.append([180.0, lm]); segments.append(cur) if len(cur) >= 2 else None
+                cur = [[-180.0, lm], [lon2, lat2]]
             else:
                 d1 = lon1 + 180.0; d2 = 180.0 - lon2
-                lat_mid = round(lat1 + (lat2 - lat1) * (d1 / max(d1 + d2, 1e-6)), 4)
-                cur.append([-180.0, lat_mid])
-                if len(cur) >= 2: segments.append(cur)
-                cur = [[180.0, lat_mid], [lon2, lat2]]
+                lm = round(lat1 + (lat2 - lat1) * (d1 / max(d1 + d2, 1e-6)), 4)
+                cur.append([-180.0, lm]); segments.append(cur) if len(cur) >= 2 else None
+                cur = [[180.0, lm], [lon2, lat2]]
     if len(cur) >= 2:
         segments.append(cur)
     return segments
 
 
 # ---------------------------------------------------------------------------
-# Data loading — all cached
+# Data loading — cached
 # ---------------------------------------------------------------------------
 @st.cache_data(show_spinner="Loading maritime network…")
 def load_network() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -176,21 +160,19 @@ def run_flow_scenario(throttles_json: str, alpha: float, beta: float) -> tuple[s
 
 @st.cache_data(show_spinner="Loading GNN predictions…")
 def load_gnn_predictions(scenario_key: str) -> pd.DataFrame | None:
-    path = PROCESSED_DIR / "gnn_edge_predictions.parquet"
-    # Fallback: use the simulated scenarios parquet
-    if not path.exists():
-        path = PROCESSED_DIR / "gnn_simulated_scenarios.parquet"
-    if not path.exists():
-        return None
-    try:
-        df = pd.read_parquet(path)
-        if "scenario_id" in df.columns:
-            subset = df[df["scenario_id"] == scenario_key]
-            if not subset.empty:
-                return subset.reset_index(drop=True)
-        return df.reset_index(drop=True)
-    except Exception:
-        return None
+    for name in ("gnn_edge_predictions.parquet", "gnn_simulated_scenarios.parquet"):
+        path = PROCESSED_DIR / name
+        if path.exists():
+            try:
+                df = pd.read_parquet(path)
+                if "scenario_id" in df.columns:
+                    sub = df[df["scenario_id"] == scenario_key]
+                    if not sub.empty:
+                        return sub.reset_index(drop=True)
+                return df.reset_index(drop=True)
+            except Exception:
+                pass
+    return None
 
 
 @st.cache_data(show_spinner="Loading price model…")
@@ -218,44 +200,42 @@ def load_hormuz_data() -> pd.DataFrame | None:
 
 
 # ---------------------------------------------------------------------------
-# Color / width helpers
+# Colour helpers
 # ---------------------------------------------------------------------------
 def util_to_color(util: float, edge_type: str, throttle: float) -> list[int]:
     u = min(max(float(util), 0.0), 1.5)
     if throttle < 0.01:
-        return [220, 38, 38, 255]       # crimson: closed
+        return [220, 38, 38, 255]
     if edge_type == "chokepoint":
-        if u > 0.95: return [245, 158, 11, 255]   # amber: heavily congested
-        if u > 0.70: return [249, 115, 22, 240]   # orange
-        if u > 0.40: return [250, 204, 21, 220]   # yellow
-        return [56, 189, 248, 230]                 # sky blue: open
+        if u > 0.95: return [245, 158, 11, 255]
+        if u > 0.70: return [249, 115, 22, 240]
+        if u > 0.40: return [250, 204, 21, 220]
+        return [56, 189, 248, 230]
     elif edge_type == "lane":
         if u > 0.90: return [239, 68,  68,  210]
         if u > 0.60: return [249, 115, 22,  200]
         if u > 0.35: return [250, 204, 21,  185]
         return [56, 189, 248, 170]
-    return [100, 180, 255, 100]   # connector: faint blue
+    return [100, 180, 255, 100]
 
 
 def util_to_width(util: float, edge_type: str) -> float:
     u = min(max(float(util), 0.0), 1.5)
-    if edge_type == "chokepoint":
-        return max(5.0, min(9.0, 5.0 + u * 4.0))
-    if edge_type == "lane":
-        return max(1.5, min(4.5, 1.5 + u * 3.0))
+    if edge_type == "chokepoint": return max(5.0, min(9.0, 5.0 + u * 4.0))
+    if edge_type == "lane":       return max(1.5, min(4.5, 1.5 + u * 3.0))
     return 0.8
 
 
 # ---------------------------------------------------------------------------
-# Build pydeck layer data
+# Build layer data
 # ---------------------------------------------------------------------------
-def build_pydeck_data(
-    edges_base: pd.DataFrame,
-    scen_df: pd.DataFrame,
-    gnn_df: pd.DataFrame | None,
-    use_gnn: bool,
+def build_layer_data(
+    edges_base:    pd.DataFrame,
+    scen_df:       pd.DataFrame,
+    gnn_df:        pd.DataFrame | None,
+    use_gnn:       bool,
     removed_edges: list[str],
-    nodes_df: pd.DataFrame,
+    nodes_df:      pd.DataFrame,
 ) -> tuple[list[dict], list[dict], list[dict]]:
 
     geo_cols = [c for c in ["edge_id", "route_segments", "from_lat", "from_lon", "to_lat", "to_lon"]
@@ -266,10 +246,9 @@ def build_pydeck_data(
     metric_cols = [
         "edge_id", "edge_type", "searoute_passage",
         "oil_volume_bbl", "tanker_transits", "utilization", "delay_days",
-        "throttle_factor", "length_nm", "free_flow_days",
-        "delta_volume_bbl", "delta_transits", "anomaly_z", "cost_per_barrel",
+        "throttle_factor", "length_nm", "delta_volume_bbl", "anomaly_z", "cost_per_barrel",
     ]
-    avail = [c for c in metric_cols if c in src.columns]
+    avail  = [c for c in metric_cols if c in src.columns]
     merged = geo.merge(src[avail], on="edge_id", how="left")
 
     path_rows: list[dict] = []
@@ -288,12 +267,8 @@ def build_pydeck_data(
         cost      = round(float(getattr(row, "cost_per_barrel",  0.0) or 0.0), 2)
         anomaly   = round(float(getattr(row, "anomaly_z",        0.0) or 0.0), 2)
 
-        if is_removed:
-            color = [60, 60, 80, 90]
-            width = 1.0
-        else:
-            color = util_to_color(util, e_type, throttle)
-            width = util_to_width(util, e_type)
+        color = [60, 60, 80, 90] if is_removed else util_to_color(util, e_type, throttle)
+        width = 1.0              if is_removed else util_to_width(util, e_type)
 
         segs = getattr(row, "route_segments", None) or [
             [[float(row.from_lon), float(row.from_lat)],
@@ -319,25 +294,16 @@ def build_pydeck_data(
             })
 
     port_rows = [
-        {
-            "node_id":   str(r.node_id),
-            "name":      str(getattr(r, "name",      r.node_id) or r.node_id),
-            "node_type": str(getattr(r, "node_type", "port")    or "port"),
-            "lat":       float(r.lat),
-            "lon":       float(r.lon),
-            "country":   str(getattr(r, "country", "") or ""),
-        }
+        {"node_id": str(r.node_id), "name": str(getattr(r, "name", r.node_id) or r.node_id),
+         "node_type": "port", "lat": float(r.lat), "lon": float(r.lon),
+         "country": str(getattr(r, "country", "") or "")}
         for r in nodes_df[nodes_df["node_type"] == "port"].itertuples()
     ]
     junction_rows = [
-        {
-            "node_id":   str(r.node_id),
-            "name":      str(getattr(r, "name",      r.node_id) or r.node_id),
-            "node_type": str(getattr(r, "node_type", "junction") or "junction"),
-            "lat":       float(r.lat),
-            "lon":       float(r.lon),
-            "country":   str(getattr(r, "country", "") or ""),
-        }
+        {"node_id": str(r.node_id), "name": str(getattr(r, "name", r.node_id) or r.node_id),
+         "node_type": str(getattr(r, "node_type", "junction") or "junction"),
+         "lat": float(r.lat), "lon": float(r.lon),
+         "country": str(getattr(r, "country", "") or "")}
         for r in nodes_df[nodes_df["node_type"] != "port"].itertuples()
     ]
     return path_rows, port_rows, junction_rows
@@ -401,16 +367,16 @@ CHOKEPOINTS = [
 ]
 
 LEGEND_ITEMS = [
-    ("Low utilisation (<40%)",          "#38bdf8"),
-    ("Moderate (40–70%)",               "#facc15"),
-    ("High (70–95%)",                   "#f97316"),
-    ("Congested / Throttled (>95%)",    "#ef4444"),
-    ("Closed / Removed",                "#3c3c50"),
+    ("Low utilisation (<40%)",       "#38bdf8"),
+    ("Moderate (40–70%)",            "#facc15"),
+    ("High (70–95%)",                "#f97316"),
+    ("Congested / Throttled (>95%)", "#ef4444"),
+    ("Closed / Removed",             "#3c3c50"),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Globe HTML builder
+# Globe HTML builder — pure deck.gl 8.9 from CDN, no pydeck HTML output
 # ---------------------------------------------------------------------------
 def build_globe_html(
     path_rows:      list[dict],
@@ -425,70 +391,20 @@ def build_globe_html(
     removed_edges:  list[str],
 ) -> str:
 
-    # ── pydeck layers ──────────────────────────────────────────────────────
-    path_layer = pdk.Layer(
-        "PathLayer",
-        data=path_rows,
-        get_path="path",
-        get_color="color",
-        get_width="width",
-        width_scale=1,
-        width_min_pixels=1,
-        width_max_pixels=14,
-        cap_rounded=True,
-        joint_rounded=True,
-        pickable=True,
-        auto_highlight=True,
-        highlight_color=[255, 255, 255, 60],
-        id="edges",
-    )
-    port_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=port_rows,
-        get_position="[lon, lat]",
-        get_fill_color=[45, 212, 191, 220],
-        get_radius=55000,
-        radius_min_pixels=3,
-        radius_max_pixels=10,
-        pickable=True,
-        auto_highlight=True,
-        highlight_color=[45, 212, 191, 80],
-        id="ports",
-    )
-    junction_layer = pdk.Layer(
-        "ScatterplotLayer",
-        data=junction_rows,
-        get_position="[lon, lat]",
-        get_fill_color=[250, 204, 21, 190],
-        get_radius=38000,
-        radius_min_pixels=2,
-        radius_max_pixels=7,
-        pickable=True,
-        auto_highlight=True,
-        highlight_color=[250, 204, 21, 60],
-        id="junctions",
-    )
+    kpi_json     = json.dumps(kpis)
+    brent_json   = json.dumps(brent_data or {})
+    removed_json = json.dumps(removed_edges)
+    # Flatten paths for deck.gl: each path_row becomes one entry
+    path_json = json.dumps(path_rows)
+    port_json = json.dumps(port_rows)
+    junc_json = json.dumps(junction_rows)
 
-    deck = pdk.Deck(
-        layers=[path_layer, port_layer, junction_layer],
-        views=[pdk.View(type="GlobeView", controller=True)],
-        initial_view_state=pdk.ViewState(latitude=18.0, longitude=48.0, zoom=1.2),
-        map_provider="carto",
-        map_style="dark_no_labels",
-        tooltip=False,
-    )
+    model_label      = "GNN Prediction" if model_mode == "gnn" else "Flow Model (BPR)"
+    hz_active_js     = "true"  if hormuz_mode else "false"
+    hz_btn_cls       = "active" if hormuz_mode else ""
+    flow_active_cls  = "active"     if model_mode == "flow" else ""
+    gnn_active_cls   = "active-gnn" if model_mode == "gnn"  else ""
 
-    base_html: str = deck.to_html(as_string=True)
-
-    # ── Serialise data for overlay JS ─────────────────────────────────────
-    kpi_json        = json.dumps(kpis)
-    brent_json      = json.dumps(brent_data or {})
-    hormuz_json     = json.dumps(hormuz_records or [])
-    removed_json    = json.dumps(removed_edges)
-    model_label     = "GNN Prediction" if model_mode == "gnn" else "Flow Model (BPR)"
-    hormuz_active_js = "true" if hormuz_mode else "false"
-
-    # ── Legend HTML ────────────────────────────────────────────────────────
     legend_html = "".join(
         f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
         f'<div style="width:28px;height:3px;border-radius:2px;background:{c}"></div>'
@@ -496,562 +412,612 @@ def build_globe_html(
         for label, c in LEGEND_ITEMS
     )
 
-    # Hormuz chart rows as a simple sparkline table
-    hz_rows = ""
+    hz_rows_html = ""
     if hormuz_records:
         for rec in hormuz_records[-8:]:
             we  = str(rec.get("week_ending", ""))[:10]
-            act = rec.get("actual",      "")
-            prd = rec.get("prediction",  "")
-            hz_rows += (
-                f'<div class="hz-row">'
-                f'<span class="hz-week">{we}</span>'
-                f'<span class="hz-val">{float(act):.1f} <small>act</small></span>'
-                f'<span class="hz-val hz-pred">{float(prd):.1f} <small>pred</small></span>'
-                f'</div>'
-            )
+            act = rec.get("actual",     "")
+            prd = rec.get("prediction", "")
+            try:
+                hz_rows_html += (
+                    f'<div class="hz-row">'
+                    f'<span class="hz-week">{we}</span>'
+                    f'<span class="hz-val">{float(act):.1f}<small> act</small></span>'
+                    f'<span class="hz-val hz-pred">{float(prd):.1f}<small> pred</small></span>'
+                    f'</div>'
+                )
+            except (TypeError, ValueError):
+                pass
 
-    flow_active  = "active"      if model_mode == "flow" else ""
-    gnn_active   = "active-gnn"  if model_mode == "gnn"  else ""
-    hz_btn_cls   = "active"      if hormuz_mode           else ""
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+*, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+html, body {{
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #020817;
+  font-family: 'Inter', system-ui, sans-serif;
+}}
+#deck-container {{
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+}}
+#deck-container canvas {{
+  outline: none;
+}}
 
-    overlay = textwrap.dedent(f"""\
-    <!-- ───── Blue Vector Overlay ───── -->
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400&display=swap');
-    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
-    body, .bv {{ font-family: 'Inter', system-ui, sans-serif; }}
+/* ── Panel base ──────────────────────────────────────────────────── */
+.bv-panel {{
+  position: fixed;
+  background: rgba(2, 8, 23, 0.86);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 16px;
+  color: #e2e8f0;
+  padding: 15px 14px;
+  z-index: 100;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(56,189,248,0.04);
+}}
+.bv-panel h2 {{
+  font-size: 10px; font-weight: 900; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #38bdf8;
+  margin: 0 0 13px; display: flex; align-items: center; gap: 7px;
+}}
+.bv-panel h3 {{
+  font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #334155; margin: 13px 0 7px;
+}}
 
-    /* ── Panels ─────────────────────────────────────────────────────── */
-    .bv-panel {{
-      position: fixed;
-      background: rgba(2, 8, 23, 0.86);
-      backdrop-filter: blur(20px) saturate(1.4);
-      -webkit-backdrop-filter: blur(20px) saturate(1.4);
-      border: 1px solid rgba(56, 189, 248, 0.14);
-      border-radius: 16px;
-      color: #e2e8f0;
-      padding: 16px 15px;
-      z-index: 9999;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(56,189,248,0.05);
-    }}
-    .bv-panel h2 {{
-      font-size: 10px; font-weight: 900; letter-spacing: 0.12em;
-      text-transform: uppercase; color: #38bdf8;
-      margin: 0 0 13px; display: flex; align-items: center; gap: 7px;
-    }}
-    .bv-panel h3 {{
-      font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
-      text-transform: uppercase; color: #334155;
-      margin: 14px 0 7px;
-    }}
+/* ── Top bar ─────────────────────────────────────────────────────── */
+#bv-topbar {{
+  top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 20px; border-radius: 40px; white-space: nowrap;
+}}
+.bv-brand {{ font-size: 15px; font-weight: 900; letter-spacing: 0.06em; color: #f8fafc; }}
+.bv-brand em {{ color: #38bdf8; font-style: normal; }}
+.bv-sep {{ width: 1px; height: 18px; background: rgba(56,189,248,0.2); flex-shrink: 0; }}
+.bv-badge {{
+  font-size: 10px; font-weight: 800; letter-spacing: 0.04em;
+  border-radius: 20px; padding: 3px 11px; white-space: nowrap;
+}}
+.bv-badge-blue   {{ background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); color:#38bdf8; }}
+.bv-badge-purple {{ background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.25); color:#a78bfa; }}
+.bv-hz-btn {{
+  padding: 5px 13px; border-radius: 20px;
+  border: 1px solid rgba(239,68,68,0.35); background: rgba(239,68,68,0.07);
+  color: #ef4444; font-size: 10px; font-weight: 800;
+  cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
+  font-family: inherit;
+}}
+.bv-hz-btn.active {{ background: rgba(239,68,68,0.22); border-color: rgba(239,68,68,0.6); }}
 
-    /* ── Top bar ─────────────────────────────────────────────────────── */
-    #bv-topbar {{
-      top: 14px; left: 50%; transform: translateX(-50%);
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px 20px; border-radius: 40px; white-space: nowrap;
-    }}
-    .bv-brand {{
-      font-size: 15px; font-weight: 900; letter-spacing: 0.06em; color: #f8fafc;
-    }}
-    .bv-brand em {{ color: #38bdf8; font-style: normal; }}
-    .bv-sep {{ width: 1px; height: 18px; background: rgba(56,189,248,0.2); }}
-    .bv-badge {{
-      font-size: 10px; font-weight: 800; letter-spacing: 0.04em;
-      border-radius: 20px; padding: 3px 11px; white-space: nowrap;
-    }}
-    .bv-badge-blue   {{ background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); color:#38bdf8; }}
-    .bv-badge-purple {{ background:rgba(167,139,250,0.12); border:1px solid rgba(167,139,250,0.25); color:#a78bfa; }}
-    .bv-badge-red    {{ background:rgba(239,68,68,0.12);  border:1px solid rgba(239,68,68,0.3);  color:#ef4444; }}
+/* ── Left panel ──────────────────────────────────────────────────── */
+#bv-left {{
+  top: 70px; left: 14px; width: 236px;
+  max-height: calc(100vh - 90px); overflow-y: auto; overflow-x: hidden;
+}}
+#bv-left::-webkit-scrollbar {{ width: 3px; }}
+#bv-left::-webkit-scrollbar-thumb {{ background: rgba(56,189,248,0.3); border-radius: 2px; }}
 
-    /* ── Hormuz button ───────────────────────────────────────────────── */
-    .bv-hz-btn {{
-      padding: 5px 13px; border-radius: 20px;
-      border: 1px solid rgba(239,68,68,0.35);
-      background: rgba(239,68,68,0.07);
-      color: #ef4444; font-size: 10px; font-weight: 800;
-      cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em;
-    }}
-    .bv-hz-btn.active {{ background: rgba(239,68,68,0.22); border-color: rgba(239,68,68,0.6); }}
+/* ── Right panel ─────────────────────────────────────────────────── */
+#bv-right {{
+  top: 70px; right: 14px; width: 220px;
+  max-height: calc(100vh - 90px); overflow-y: auto; overflow-x: hidden;
+}}
+#bv-right::-webkit-scrollbar {{ width: 3px; }}
+#bv-right::-webkit-scrollbar-thumb {{ background: rgba(56,189,248,0.3); border-radius: 2px; }}
 
-    /* ── Left panel ──────────────────────────────────────────────────── */
-    #bv-left {{
-      top: 70px; left: 14px; width: 236px;
-      max-height: calc(100vh - 90px); overflow-y: auto; overflow-x: hidden;
-    }}
-    #bv-left::-webkit-scrollbar {{ width: 3px; }}
-    #bv-left::-webkit-scrollbar-thumb {{ background: rgba(56,189,248,0.3); border-radius: 2px; }}
+/* ── Model toggle ────────────────────────────────────────────────── */
+.bv-toggle {{
+  display: flex; border: 1px solid rgba(56,189,248,0.18);
+  border-radius: 9px; overflow: hidden; margin-bottom: 12px;
+  background: rgba(0,0,0,0.3);
+}}
+.bv-toggle button {{
+  flex: 1; padding: 7px 4px; font-size: 10px; font-weight: 800;
+  letter-spacing: 0.04em; border: none; background: transparent;
+  color: #334155; cursor: pointer; transition: all 0.15s; font-family: inherit;
+}}
+.bv-toggle button.active     {{ background: rgba(56,189,248,0.18);  color: #38bdf8; }}
+.bv-toggle button.active-gnn {{ background: rgba(167,139,250,0.18); color: #a78bfa; }}
 
-    /* ── Right panel ─────────────────────────────────────────────────── */
-    #bv-right {{
-      top: 70px; right: 14px; width: 220px;
-      max-height: calc(100vh - 90px); overflow-y: auto; overflow-x: hidden;
-    }}
-    #bv-right::-webkit-scrollbar {{ width: 3px; }}
-    #bv-right::-webkit-scrollbar-thumb {{ background: rgba(56,189,248,0.3); border-radius: 2px; }}
+/* ── KPI cards ───────────────────────────────────────────────────── */
+.kpi {{
+  background: rgba(56,189,248,0.04); border: 1px solid rgba(56,189,248,0.1);
+  border-radius: 10px; padding: 9px 11px; margin-bottom: 7px;
+}}
+.kpi-label {{ font-size: 9px; font-weight: 700; color: #475569; letter-spacing: 0.08em; text-transform: uppercase; }}
+.kpi-value {{ font-size: 20px; font-weight: 900; color: #f1f5f9; margin-top: 2px; line-height: 1; }}
+.kpi-sub   {{ font-size: 10px; color: #64748b; margin-top: 2px; }}
+.kpi-warn  {{ color: #f97316 !important; }}
+.kpi-danger{{ color: #ef4444 !important; }}
+.brent-box {{
+  background: rgba(250,204,21,0.06); border: 1px solid rgba(250,204,21,0.18);
+  border-radius: 10px; padding: 10px 11px; margin-top: 6px;
+}}
+.brent-label {{ font-size: 9px; font-weight: 700; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase; }}
+.brent-value {{ font-size: 19px; font-weight: 900; color: #facc15; margin-top: 2px; }}
+.brent-ci    {{ font-size: 10px; color: #64748b; margin-top: 2px; }}
 
-    /* ── Model toggle ────────────────────────────────────────────────── */
-    .bv-toggle {{
-      display: flex; border: 1px solid rgba(56,189,248,0.18);
-      border-radius: 9px; overflow: hidden; margin-bottom: 12px;
-      background: rgba(0,0,0,0.3);
-    }}
-    .bv-toggle button {{
-      flex: 1; padding: 7px 4px; font-size: 10px; font-weight: 800;
-      letter-spacing: 0.04em; border: none; background: transparent;
-      color: #334155; cursor: pointer; transition: all 0.15s; font-family: inherit;
-    }}
-    .bv-toggle button.active     {{ background: rgba(56,189,248,0.18);  color: #38bdf8; }}
-    .bv-toggle button.active-gnn {{ background: rgba(167,139,250,0.18); color: #a78bfa; }}
+/* ── Popup ───────────────────────────────────────────────────────── */
+#bv-popup {{
+  position: fixed; display: none;
+  background: rgba(2, 8, 23, 0.97); backdrop-filter: blur(24px);
+  border: 1px solid rgba(56,189,248,0.3); border-radius: 14px;
+  color: #e2e8f0; padding: 16px 17px;
+  min-width: 220px; max-width: 280px;
+  z-index: 200; box-shadow: 0 20px 56px rgba(0,0,0,0.7);
+}}
+#bv-popup h4 {{
+  font-size: 13px; font-weight: 800; color: #38bdf8;
+  margin: 0 0 11px; padding-bottom: 10px;
+  border-bottom: 1px solid rgba(56,189,248,0.14);
+}}
+.pop-row   {{ display:flex; justify-content:space-between; align-items:center; margin:5px 0; font-size:11px; }}
+.pop-label {{ color:#64748b; }}
+.pop-val   {{ color:#f1f5f9; font-weight:700; }}
+.pop-badge {{
+  display:inline-block; font-size:9px; font-weight:800;
+  letter-spacing:0.06em; padding:2px 9px; border-radius:20px; margin-bottom:9px;
+}}
+.pb-choke {{ background:rgba(239,68,68,0.18);   color:#ef4444; border:1px solid rgba(239,68,68,0.3); }}
+.pb-lane  {{ background:rgba(56,189,248,0.18);  color:#38bdf8; border:1px solid rgba(56,189,248,0.3); }}
+.pb-conn  {{ background:rgba(100,116,139,0.18); color:#94a3b8; border:1px solid rgba(100,116,139,0.3); }}
+.pb-node  {{ background:rgba(45,212,191,0.18);  color:#2dd4bf; border:1px solid rgba(45,212,191,0.3); }}
+.btn-rm {{
+  margin-top: 12px; width: 100%; padding: 8px;
+  border-radius: 9px; border: 1px solid rgba(239,68,68,0.45);
+  background: rgba(239,68,68,0.1); color: #ef4444;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.05em;
+  cursor: pointer; transition: background 0.15s; font-family: inherit;
+}}
+.btn-rm:hover {{ background: rgba(239,68,68,0.22); }}
+.btn-restore {{ border-color:rgba(56,189,248,0.45); background:rgba(56,189,248,0.1); color:#38bdf8; }}
+.btn-restore:hover {{ background: rgba(56,189,248,0.22); }}
+.pop-close {{
+  position:absolute; top:12px; right:14px;
+  background:none; border:none; color:#475569;
+  font-size:16px; cursor:pointer; line-height:1; font-family:inherit;
+}}
+.pop-close:hover {{ color:#e2e8f0; }}
 
-    /* ── KPI cards ───────────────────────────────────────────────────── */
-    .kpi {{
-      background: rgba(56,189,248,0.04); border: 1px solid rgba(56,189,248,0.1);
-      border-radius: 10px; padding: 9px 11px; margin-bottom: 7px;
-    }}
-    .kpi-label {{ font-size: 9px; font-weight: 700; color: #475569; letter-spacing: 0.08em; text-transform: uppercase; }}
-    .kpi-value {{ font-size: 20px; font-weight: 900; color: #f1f5f9; margin-top: 2px; line-height: 1; }}
-    .kpi-sub   {{ font-size: 10px; color: #64748b; margin-top: 2px; }}
-    .kpi-warn  {{ color: #f97316 !important; }}
-    .kpi-danger{{ color: #ef4444 !important; }}
+/* ── Hormuz banner ───────────────────────────────────────────────── */
+#bv-hz-banner {{
+  display: none; position: fixed;
+  bottom: 70px; left: 50%; transform: translateX(-50%);
+  background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 10px; padding: 9px 22px; color: #ef4444;
+  font-size: 11px; font-weight: 800; letter-spacing: 0.05em;
+  z-index: 100; align-items: center; gap: 8px;
+  white-space: nowrap; backdrop-filter: blur(12px);
+}}
 
-    /* ── Brent box ───────────────────────────────────────────────────── */
-    .brent-box {{
-      background: rgba(250,204,21,0.06); border: 1px solid rgba(250,204,21,0.18);
-      border-radius: 10px; padding: 10px 11px; margin-top: 6px;
-    }}
-    .brent-label {{ font-size: 9px; font-weight: 700; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase; }}
-    .brent-value {{ font-size: 19px; font-weight: 900; color: #facc15; margin-top: 2px; }}
-    .brent-ci    {{ font-size: 10px; color: #64748b; margin-top: 2px; }}
+/* ── Hormuz crisis panel ─────────────────────────────────────────── */
+#bv-hz-panel {{
+  display: none; position: fixed;
+  bottom: 100px; right: 14px; width: 220px;
+  background: rgba(2,8,23,0.9); backdrop-filter: blur(20px);
+  border: 1px solid rgba(239,68,68,0.3); border-radius: 14px;
+  padding: 13px 14px; z-index: 100;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}}
+#bv-hz-panel h4 {{
+  font-size: 10px; font-weight: 900; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #ef4444; margin-bottom: 10px;
+}}
+.hz-row  {{ display:flex; align-items:center; gap:4px; margin-bottom:5px; font-size:10px; }}
+.hz-week {{ color:#475569; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.hz-val  {{ color:#f1f5f9; font-weight:700; }}
+.hz-val small {{ color:#64748b; font-weight:400; }}
+.hz-pred {{ color:#a78bfa !important; }}
 
-    /* ── Popup ───────────────────────────────────────────────────────── */
-    #bv-popup {{
-      position: fixed; display: none;
-      background: rgba(2, 8, 23, 0.97); backdrop-filter: blur(24px);
-      border: 1px solid rgba(56,189,248,0.3); border-radius: 14px;
-      color: #e2e8f0; padding: 16px 17px;
-      min-width: 220px; max-width: 280px;
-      z-index: 10001; box-shadow: 0 20px 56px rgba(0,0,0,0.7);
-      pointer-events: auto;
-    }}
-    #bv-popup h4 {{
-      font-size: 13px; font-weight: 800; color: #38bdf8;
-      margin: 0 0 11px; padding-bottom: 10px;
-      border-bottom: 1px solid rgba(56,189,248,0.14);
-    }}
-    .pop-row  {{ display:flex; justify-content:space-between; align-items:center; margin:5px 0; font-size:11px; }}
-    .pop-label{{ color:#64748b; }}
-    .pop-val  {{ color:#f1f5f9; font-weight:700; }}
-    .pop-badge{{
-      display:inline-block; font-size:9px; font-weight:800;
-      letter-spacing:0.06em; padding:2px 9px; border-radius:20px; margin-bottom:9px;
-    }}
-    .pb-choke{{ background:rgba(239,68,68,0.18);   color:#ef4444; border:1px solid rgba(239,68,68,0.3); }}
-    .pb-lane {{ background:rgba(56,189,248,0.18);  color:#38bdf8; border:1px solid rgba(56,189,248,0.3); }}
-    .pb-conn {{ background:rgba(100,116,139,0.18); color:#94a3b8; border:1px solid rgba(100,116,139,0.3); }}
-    .pb-node {{ background:rgba(45,212,191,0.18);  color:#2dd4bf; border:1px solid rgba(45,212,191,0.3); }}
-    .btn-rm {{
-      margin-top: 12px; width: 100%; padding: 8px;
-      border-radius: 9px; border: 1px solid rgba(239,68,68,0.45);
-      background: rgba(239,68,68,0.1); color: #ef4444;
-      font-size: 10px; font-weight: 800; letter-spacing: 0.05em;
-      cursor: pointer; transition: background 0.15s; font-family: inherit;
-    }}
-    .btn-rm:hover {{ background: rgba(239,68,68,0.22); }}
-    .btn-restore {{ border-color:rgba(56,189,248,0.45); background:rgba(56,189,248,0.1); color:#38bdf8; }}
-    .btn-restore:hover {{ background: rgba(56,189,248,0.22); }}
-    .pop-close {{
-      position:absolute; top:12px; right:14px;
-      background:none; border:none; color:#475569;
-      font-size:16px; cursor:pointer; line-height:1; font-family:inherit;
-    }}
-    .pop-close:hover {{ color:#e2e8f0; }}
+/* ── Legend ──────────────────────────────────────────────────────── */
+#bv-legend {{
+  position: fixed; bottom: 14px; left: 14px;
+  background: rgba(2,8,23,0.86); backdrop-filter: blur(18px);
+  border: 1px solid rgba(56,189,248,0.14);
+  border-radius: 13px; padding: 12px 15px; z-index: 100;
+}}
+#bv-legend h3 {{
+  font-size: 9px; font-weight: 800; color: #334155;
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;
+}}
 
-    /* ── Hormuz banner ───────────────────────────────────────────────── */
-    #bv-hz-banner {{
-      display: none; position: fixed;
-      bottom: 72px; left: 50%; transform: translateX(-50%);
-      background: rgba(239,68,68,0.14); border: 1px solid rgba(239,68,68,0.4);
-      border-radius: 10px; padding: 9px 22px; color: #ef4444;
-      font-size: 11px; font-weight: 800; letter-spacing: 0.05em;
-      z-index: 9998; align-items: center; gap: 8px;
-      white-space: nowrap; backdrop-filter: blur(12px);
-    }}
+/* ── Removed list ────────────────────────────────────────────────── */
+#bv-removed-list {{ min-height: 16px; }}
+.rm-item {{
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:4px; font-size:11px;
+}}
+.rm-item span {{ color:#ef4444; }}
+.rm-item button {{
+  background:none; border:none; color:#334155; cursor:pointer;
+  font-size:12px; line-height:1; padding:0 2px; font-family:inherit;
+}}
+.rm-item button:hover {{ color:#e2e8f0; }}
+#bv-clear-btn {{
+  margin-top:7px; width:100%; padding:6px;
+  border-radius:8px; border:1px solid rgba(100,116,139,0.3);
+  background:rgba(100,116,139,0.1); color:#64748b;
+  font-size:10px; font-weight:700; cursor:pointer; font-family:inherit;
+}}
+.bv-hint {{ font-size:10px; color:#334155; line-height:1.7; }}
+.bv-hint b {{ color:#38bdf8; }}
+.bv-hint b.node {{ color:#2dd4bf; }}
+</style>
+</head>
+<body>
 
-    /* ── Hormuz crisis panel ─────────────────────────────────────────── */
-    #bv-hz-panel {{
-      display: none; position: fixed;
-      bottom: 100px; right: 14px; width: 220px;
-      background: rgba(2,8,23,0.9); backdrop-filter: blur(20px);
-      border: 1px solid rgba(239,68,68,0.3); border-radius: 14px;
-      padding: 13px 14px; z-index: 9999;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    }}
-    #bv-hz-panel h4 {{
-      font-size: 10px; font-weight: 900; letter-spacing: 0.1em;
-      text-transform: uppercase; color: #ef4444; margin-bottom: 10px;
-    }}
-    .hz-row {{ display:flex; align-items:center; gap:4px; margin-bottom:5px; font-size:10px; }}
-    .hz-week {{ color:#475569; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-    .hz-val  {{ color:#f1f5f9; font-weight:700; }}
-    .hz-pred {{ color:#a78bfa; }}
+<!-- deck.gl canvas container -->
+<div id="deck-container"></div>
 
-    /* ── Legend ──────────────────────────────────────────────────────── */
-    #bv-legend {{
-      position: fixed; bottom: 14px; left: 14px;
-      background: rgba(2,8,23,0.86); backdrop-filter: blur(18px);
-      border: 1px solid rgba(56,189,248,0.14);
-      border-radius: 13px; padding: 12px 15px; z-index: 9999;
-    }}
-    #bv-legend h3 {{
-      font-size: 9px; font-weight: 800; color: #334155;
-      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px;
-    }}
+<!-- Top bar -->
+<div class="bv-panel" id="bv-topbar">
+  <div class="bv-brand"><em>BLUE</em>VECTOR&nbsp;🌐</div>
+  <div class="bv-sep"></div>
+  <span class="bv-badge bv-badge-blue" id="bv-scenario-badge">{scenario_label[:36]}</span>
+  <span class="bv-badge bv-badge-purple" id="bv-model-badge">{model_label}</span>
+  <button class="bv-hz-btn {hz_btn_cls}" id="bv-hz-btn" onclick="bvToggleHormuz()">
+    🛢&nbsp;Hormuz Crisis 2026
+  </button>
+</div>
 
-    /* ── Removed list ────────────────────────────────────────────────── */
-    #bv-removed-list {{ min-height: 16px; }}
-    .rm-item {{
-      display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:4px; font-size:11px;
-    }}
-    .rm-item span {{ color:#ef4444; }}
-    .rm-item button {{
-      background:none; border:none; color:#334155; cursor:pointer;
-      font-size:12px; line-height:1; padding:0 2px; font-family:inherit;
-    }}
-    .rm-item button:hover {{ color:#e2e8f0; }}
-    #bv-clear-btn {{
-      margin-top:7px; width:100%; padding:6px;
-      border-radius:8px; border:1px solid rgba(100,116,139,0.3);
-      background:rgba(100,116,139,0.1); color:#64748b;
-      font-size:10px; font-weight:700; cursor:pointer; font-family:inherit;
-    }}
+<!-- Left panel -->
+<div class="bv-panel" id="bv-left">
+  <h2>⚙&nbsp; Model Controls</h2>
+  <div class="bv-toggle">
+    <button id="bv-btn-flow" class="{flow_active_cls}" onclick="bvSetModel('flow')">Flow Model</button>
+    <button id="bv-btn-gnn"  class="{gnn_active_cls}"  onclick="bvSetModel('gnn')">GNN</button>
+  </div>
+  <h3>Congestion Scale</h3>
+  {legend_html}
+  <h3>Removed Edges</h3>
+  <div id="bv-removed-list"></div>
+  <button id="bv-clear-btn" onclick="bvClearRemoved()" style="display:none">↺ Restore All</button>
+  <h3>Interaction</h3>
+  <div class="bv-hint">
+    <b>Click edge</b> → inspect &amp; remove<br>
+    <b class="node">Click node</b> → port attributes<br>
+    Drag → rotate globe&nbsp;·&nbsp;Scroll → zoom
+  </div>
+</div>
 
-    /* ── Interaction hint ────────────────────────────────────────────── */
-    .bv-hint {{ font-size:10px; color:#334155; line-height:1.7; }}
-    .bv-hint b {{ color:#38bdf8; }}
-    .bv-hint b.node {{ color:#2dd4bf; }}
-    </style>
+<!-- Right panel -->
+<div class="bv-panel" id="bv-right">
+  <h2>📊&nbsp; Live Metrics</h2>
+  <div id="bv-kpis"></div>
+  <div id="bv-brent"></div>
+</div>
 
-    <!-- Top bar -->
-    <div class="bv-panel" id="bv-topbar">
-      <div class="bv-brand"><em>BLUE</em>VECTOR&nbsp;🌐</div>
-      <div class="bv-sep"></div>
-      <span class="bv-badge bv-badge-blue" id="bv-scenario-badge">{scenario_label[:36]}</span>
-      <span class="bv-badge bv-badge-purple" id="bv-model-badge">{model_label}</span>
-      <button class="bv-hz-btn {hz_btn_cls}" id="bv-hz-btn" onclick="bvToggleHormuz()">
-        🛢&nbsp;Hormuz Crisis 2026
-      </button>
-    </div>
+<!-- Popup -->
+<div id="bv-popup">
+  <button class="pop-close" onclick="bvClosePopup()">✕</button>
+  <div id="bv-popup-content"></div>
+</div>
 
-    <!-- Left panel -->
-    <div class="bv-panel" id="bv-left">
-      <h2>⚙&nbsp; Model Controls</h2>
+<!-- Hormuz banner -->
+<div id="bv-hz-banner">🚨&nbsp; HORMUZ CRISIS MODE ACTIVE — 2026 Transfer Analysis</div>
 
-      <div class="bv-toggle">
-        <button id="bv-btn-flow" class="{flow_active}" onclick="bvSetModel('flow')">Flow Model</button>
-        <button id="bv-btn-gnn"  class="{gnn_active}"  onclick="bvSetModel('gnn')">GNN</button>
-      </div>
+<!-- Hormuz panel -->
+<div id="bv-hz-panel">
+  <h4>🛢 Hormuz Weekly Predictions</h4>
+  {hz_rows_html or '<div class="bv-hint">No prediction data available.</div>'}
+</div>
 
-      <h3>Congestion Scale</h3>
-      {legend_html}
+<!-- Legend -->
+<div id="bv-legend">
+  <h3>Edge Utilisation</h3>
+  {legend_html}
+</div>
 
-      <h3>Removed Edges</h3>
-      <div id="bv-removed-list"></div>
-      <button id="bv-clear-btn" onclick="bvClearRemoved()" style="display:none">↺ Restore All</button>
+<!-- deck.gl 8.9 — full bundle with GlobeView, PathLayer, ScatterplotLayer -->
+<script src="https://cdn.jsdelivr.net/npm/deck.gl@8.9/dist.min.js"></script>
 
-      <h3>Interaction</h3>
-      <div class="bv-hint">
-        <b>Click edge</b> → inspect &amp; remove<br>
-        <b class="node">Click node</b> → port attributes<br>
-        Drag → rotate globe &nbsp;·&nbsp; Scroll → zoom
-      </div>
-    </div>
-
-    <!-- Right panel -->
-    <div class="bv-panel" id="bv-right">
-      <h2>📊&nbsp; Live Metrics</h2>
-      <div id="bv-kpis"></div>
-      <div id="bv-brent"></div>
-    </div>
-
-    <!-- Pop-up -->
-    <div id="bv-popup">
-      <button class="pop-close" onclick="bvClosePopup()">✕</button>
-      <div id="bv-popup-content"></div>
-    </div>
-
-    <!-- Hormuz banner -->
-    <div id="bv-hz-banner">🚨&nbsp; HORMUZ CRISIS MODE ACTIVE — 2026 Transfer Analysis</div>
-
-    <!-- Hormuz crisis panel -->
-    <div id="bv-hz-panel">
-      <h4>🛢 Hormuz Weekly Predictions</h4>
-      {hz_rows or '<div class="bv-hint">No prediction data available.</div>'}
-    </div>
-
-    <!-- Legend -->
-    <div id="bv-legend">
-      <h3>Edge Utilisation</h3>
-      {legend_html}
-    </div>
-
-    <script>
-    // ── State ──────────────────────────────────────────────────────────────
-    const KPI      = {kpi_json};
-    const BRENT    = {brent_json};
-    const HORMUZ   = {hormuz_json};
-    let   REMOVED  = {removed_json};
-    let   MODEL    = "{model_mode}";
-    let   HORMUZ_ON = {hormuz_active_js};
-
-    // ── KPI rendering ──────────────────────────────────────────────────────
-    function bvRenderKPIs() {{
-      const c = document.getElementById('bv-kpis');
-      const warn  = v => v > 3  ? 'kpi-danger' : v > 1  ? 'kpi-warn' : '';
-      c.innerHTML = `
-        <div class="kpi"><div class="kpi-label">Chokepoint Crossings</div>
-          <div class="kpi-value">${{KPI.cp_transits.toLocaleString()}}</div>
-          <div class="kpi-sub">tanker transits / week</div></div>
-        <div class="kpi"><div class="kpi-label">Rerouted Flow</div>
-          <div class="kpi-value">${{KPI.rerouted_mbd}}</div>
-          <div class="kpi-sub">mb/d added corridor traffic</div></div>
-        <div class="kpi"><div class="kpi-label">Extra Delay</div>
-          <div class="kpi-value ${{warn(KPI.extra_days)}}">${{KPI.extra_days >= 0 ? '+' : ''}}<span style="font-size:14px">${{KPI.extra_days}}</span> d</div>
-          <div class="kpi-sub">Cape detour + BPR queue</div></div>
-        <div class="kpi"><div class="kpi-label">Suez / (Suez+Cape) Share</div>
-          <div class="kpi-value">${{KPI.suez_share_pct}}<span style="font-size:12px">%</span></div>
-          <div class="kpi-sub">Europe–Asia routing split</div></div>
-        <div class="kpi"><div class="kpi-label">Stranded Volume</div>
-          <div class="kpi-value ${{KPI.stranded_mbd > 0.5 ? 'kpi-danger' : ''}}">${{KPI.stranded_mbd}}</div>
-          <div class="kpi-sub">mb/d unserved demand</div></div>
-      `;
-      const bc = document.getElementById('bv-brent');
-      if (BRENT && BRENT.pred_brent_mean != null) {{
-        const mean = parseFloat(BRENT.pred_brent_mean).toFixed(1);
-        const lo   = parseFloat(BRENT.pred_brent_lower_90).toFixed(1);
-        const hi   = parseFloat(BRENT.pred_brent_upper_90).toFixed(1);
-        const d    = BRENT.delta_brent_mean;
-        const ds   = d != null ? (d >= 0 ? '+' : '') + parseFloat(d).toFixed(1) : null;
-        bc.innerHTML = `<h3>Brent Signal</h3>
-          <div class="brent-box">
-            <div class="brent-label">Conditional Estimate</div>
-            <div class="brent-value">$${{mean}} / bbl</div>
-            <div class="brent-ci">90% CI: $${{lo}} – $${{hi}}</div>
-            ${{ds ? '<div class="brent-ci" style="color:#f97316;margin-top:3px">Δ baseline: ' + ds + ' $/bbl</div>' : ''}}
-            <div class="brent-ci" style="color:#334155;font-size:9px;margin-top:4px">Ridge regression · conditional assoc.</div>
-          </div>`;
-      }} else {{
-        bc.innerHTML = '<h3>Brent Signal</h3><div class="bv-hint">Price data unavailable.</div>';
+<script>
+// ── Self-resize: make this iframe fill the parent viewport ─────────────────
+// components.html() is same-origin, so window.frameElement is accessible.
+(function() {{
+  function resize() {{
+    try {{
+      const fe = window.frameElement;
+      if (fe) {{
+        fe.style.height = window.parent.innerHeight + 'px';
+        fe.style.width  = '100%';
+        fe.style.display = 'block';
+        fe.scrolling = 'no';
       }}
-    }}
+    }} catch(e) {{}}
+  }}
+  resize();
+  try {{ window.parent.addEventListener('resize', resize); }} catch(e) {{}}
+}})();
 
-    // ── Removed edge list ──────────────────────────────────────────────────
-    function bvRenderRemoved() {{
-      const el  = document.getElementById('bv-removed-list');
-      const btn = document.getElementById('bv-clear-btn');
-      if (!REMOVED.length) {{
-        el.innerHTML = '<span class="bv-hint" style="font-style:italic">None</span>';
-        btn.style.display = 'none';
-      }} else {{
-        el.innerHTML = REMOVED.map(e =>
-          `<div class="rm-item"><span>${{e}}</span>` +
-          `<button onclick="bvRestoreEdge('${{e}}')" title="Restore">✕</button></div>`
-        ).join('');
-        btn.style.display = 'block';
-      }}
-    }}
+// ── Data ───────────────────────────────────────────────────────────────────
+const PATH_DATA     = {path_json};
+const PORT_DATA     = {port_json};
+const JUNCTION_DATA = {junc_json};
+const KPI           = {kpi_json};
+const BRENT         = {brent_json};
+let   REMOVED       = {removed_json};
+let   MODEL         = "{model_mode}";
+let   HORMUZ_ON     = {hz_active_js};
 
-    // ── Hormuz panel ───────────────────────────────────────────────────────
-    function bvApplyHormuzUI() {{
-      document.getElementById('bv-hz-btn').className     = 'bv-hz-btn' + (HORMUZ_ON ? ' active' : '');
-      document.getElementById('bv-hz-banner').style.display = HORMUZ_ON ? 'flex' : 'none';
-      document.getElementById('bv-hz-panel').style.display  = HORMUZ_ON ? 'block' : 'none';
-    }}
+// ── deck.gl init ───────────────────────────────────────────────────────────
+const {{DeckGL, GlobeView, PathLayer, ScatterplotLayer}} = deck;
 
-    // ── Popup ──────────────────────────────────────────────────────────────
-    function bvClosePopup() {{
-      document.getElementById('bv-popup').style.display = 'none';
-    }}
+const deckgl = new DeckGL({{
+  container: 'deck-container',
+  views: new GlobeView({{
+    id: 'globe',
+    controller: {{
+      dragRotate: true,
+      scrollZoom: true,
+      touchRotate: true,
+      doubleClickZoom: true,
+    }},
+  }}),
+  initialViewState: {{
+    longitude: 48.0,
+    latitude:  18.0,
+    zoom:      1.3,
+  }},
+  parameters: {{
+    depthTest: false,
+    clearColor: [0.011, 0.027, 0.063, 1],
+  }},
+  layers: buildLayers(),
+  onClick: handleClick,
+  getCursor: ({{isDragging}}) => isDragging ? 'grabbing' : 'crosshair',
+}});
 
-    function bvShowEdgePopup(obj, px, py) {{
-      const removed = REMOVED.includes(obj.edge_id);
-      const bc = obj.edge_type === 'chokepoint' ? 'pb-choke' : obj.edge_type === 'lane' ? 'pb-lane' : 'pb-conn';
-      const uc = obj.util_pct > 95 ? '#ef4444' : obj.util_pct > 70 ? '#f97316' : obj.util_pct > 40 ? '#facc15' : '#38bdf8';
-      document.getElementById('bv-popup-content').innerHTML = `
-        <h4>${{obj.edge_id}}</h4>
-        <span class="pop-badge ${{bc}}">${{(obj.edge_type||'EDGE').toUpperCase()}}</span>
-        ${{obj.passage ? '<span class="pop-badge pb-lane" style="background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.3)">' + obj.passage + '</span>' : ''}}
-        <div class="pop-row"><span class="pop-label">Utilization</span><span class="pop-val" style="color:${{uc}}">${{obj.util_pct}}%</span></div>
-        <div class="pop-row"><span class="pop-label">Transits / wk</span><span class="pop-val">${{obj.transits}}</span></div>
-        <div class="pop-row"><span class="pop-label">Corridor Delay</span><span class="pop-val">+${{obj.delay_days}} d</span></div>
-        <div class="pop-row"><span class="pop-label">Volume</span><span class="pop-val">${{obj.volume_mbd}} mb/d</span></div>
-        <div class="pop-row"><span class="pop-label">Length</span><span class="pop-val">${{(obj.length_nm||0).toLocaleString()}} nm</span></div>
-        ${{obj.cost_per_bbl ? '<div class="pop-row"><span class="pop-label">Cost / bbl</span><span class="pop-val">$' + obj.cost_per_bbl + '</span></div>' : ''}}
-        <div class="pop-row"><span class="pop-label">Throttle</span><span class="pop-val">${{(obj.throttle*100).toFixed(0)}}% open</span></div>
-        ${{obj.anomaly_z ? '<div class="pop-row"><span class="pop-label">Anomaly Z</span><span class="pop-val">' + obj.anomaly_z + '</span></div>' : ''}}
-        ${{removed
-          ? '<button class="btn-rm btn-restore" onclick="bvRestoreEdge(\\'' + obj.edge_id + '\\')">↺ Restore this edge</button>'
-          : '<button class="btn-rm" onclick="bvRemoveEdge(\\'' + obj.edge_id + '\\')">✕ Remove edge &amp; re-route</button>'
-        }}
-      `;
-      bvPositionPopup(px, py);
-    }}
+function buildLayers() {{
+  return [
+    new PathLayer({{
+      id: 'edges',
+      data: PATH_DATA,
+      getPath:  d => d.path,
+      getColor: d => d.color,
+      getWidth: d => d.width,
+      widthScale: 1,
+      widthMinPixels: 1,
+      widthMaxPixels: 14,
+      capRounded: true,
+      jointRounded: true,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [255, 255, 255, 50],
+    }}),
+    new ScatterplotLayer({{
+      id: 'ports',
+      data: PORT_DATA,
+      getPosition: d => [d.lon, d.lat],
+      getFillColor: [45, 212, 191, 220],
+      getRadius: 55000,
+      radiusMinPixels: 4,
+      radiusMaxPixels: 11,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [45, 212, 191, 80],
+    }}),
+    new ScatterplotLayer({{
+      id: 'junctions',
+      data: JUNCTION_DATA,
+      getPosition: d => [d.lon, d.lat],
+      getFillColor: [250, 204, 21, 190],
+      getRadius: 38000,
+      radiusMinPixels: 3,
+      radiusMaxPixels: 8,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [250, 204, 21, 60],
+    }}),
+  ];
+}}
 
-    function bvShowNodePopup(obj, px, py) {{
-      document.getElementById('bv-popup-content').innerHTML = `
-        <h4>${{obj.name || obj.node_id}}</h4>
-        <span class="pop-badge pb-node">${{(obj.node_type||'NODE').toUpperCase()}}</span>
-        <div class="pop-row"><span class="pop-label">Node ID</span><span class="pop-val">${{obj.node_id}}</span></div>
-        <div class="pop-row"><span class="pop-label">Country</span><span class="pop-val">${{obj.country || '—'}}</span></div>
-        <div class="pop-row"><span class="pop-label">Latitude</span><span class="pop-val">${{parseFloat(obj.lat).toFixed(2)}}°</span></div>
-        <div class="pop-row"><span class="pop-label">Longitude</span><span class="pop-val">${{parseFloat(obj.lon).toFixed(2)}}°</span></div>
-      `;
-      bvPositionPopup(px, py);
-    }}
+// ── Click handling ─────────────────────────────────────────────────────────
+function handleClick(info, event) {{
+  if (!info || !info.object) {{ bvClosePopup(); return; }}
+  const src = event && event.srcEvent ? event.srcEvent : event;
+  const px  = src ? (src.clientX || 0) : 0;
+  const py  = src ? (src.clientY || 0) : 0;
+  if (info.layer && info.layer.id === 'edges') {{
+    bvShowEdgePopup(info.object, px, py);
+  }} else {{
+    bvShowNodePopup(info.object, px, py);
+  }}
+}}
 
-    function bvPositionPopup(px, py) {{
-      const popup = document.getElementById('bv-popup');
-      popup.style.display = 'block';
-      requestAnimationFrame(() => {{
-        const pw = popup.offsetWidth  || 260;
-        const ph = popup.offsetHeight || 220;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        let x = px + 16;
-        let y = py - 24;
-        if (x + pw > vw - 10) x = px - pw - 16;
-        if (y + ph > vh - 10) y = vh - ph - 10;
-        if (y < 10) y = 10;
-        popup.style.left = x + 'px';
-        popup.style.top  = y + 'px';
-      }});
-    }}
+// ── KPI rendering ──────────────────────────────────────────────────────────
+function bvRenderKPIs() {{
+  const c = document.getElementById('bv-kpis');
+  const warn = v => v > 3 ? 'kpi-danger' : v > 1 ? 'kpi-warn' : '';
+  c.innerHTML = `
+    <div class="kpi"><div class="kpi-label">Chokepoint Crossings</div>
+      <div class="kpi-value">${{KPI.cp_transits.toLocaleString()}}</div>
+      <div class="kpi-sub">tanker transits / week</div></div>
+    <div class="kpi"><div class="kpi-label">Rerouted Flow</div>
+      <div class="kpi-value">${{KPI.rerouted_mbd}}</div>
+      <div class="kpi-sub">mb/d added corridor traffic</div></div>
+    <div class="kpi"><div class="kpi-label">Extra Delay</div>
+      <div class="kpi-value ${{warn(KPI.extra_days)}}">${{KPI.extra_days >= 0 ? '+' : ''}}<span style="font-size:14px">${{KPI.extra_days}}</span> d</div>
+      <div class="kpi-sub">Cape detour + BPR queue</div></div>
+    <div class="kpi"><div class="kpi-label">Suez / (Suez+Cape) Share</div>
+      <div class="kpi-value">${{KPI.suez_share_pct}}<span style="font-size:12px">%</span></div>
+      <div class="kpi-sub">Europe–Asia routing split</div></div>
+    <div class="kpi"><div class="kpi-label">Stranded Volume</div>
+      <div class="kpi-value ${{KPI.stranded_mbd > 0.5 ? 'kpi-danger' : ''}}">${{KPI.stranded_mbd}}</div>
+      <div class="kpi-sub">mb/d unserved demand</div></div>
+  `;
+  const bc = document.getElementById('bv-brent');
+  if (BRENT && BRENT.pred_brent_mean != null) {{
+    const mean = parseFloat(BRENT.pred_brent_mean).toFixed(1);
+    const lo   = parseFloat(BRENT.pred_brent_lower_90).toFixed(1);
+    const hi   = parseFloat(BRENT.pred_brent_upper_90).toFixed(1);
+    const d    = BRENT.delta_brent_mean;
+    const ds   = d != null ? (d >= 0 ? '+' : '') + parseFloat(d).toFixed(1) : null;
+    bc.innerHTML = `<h3>Brent Signal</h3>
+      <div class="brent-box">
+        <div class="brent-label">Conditional Estimate</div>
+        <div class="brent-value">$${{mean}} / bbl</div>
+        <div class="brent-ci">90% CI: $${{lo}} – $${{hi}}</div>
+        ${{ds ? '<div class="brent-ci" style="color:#f97316;margin-top:3px">Δ baseline: ' + ds + ' $/bbl</div>' : ''}}
+        <div class="brent-ci" style="color:#334155;font-size:9px;margin-top:4px">Ridge regression · conditional assoc.</div>
+      </div>`;
+  }} else {{
+    bc.innerHTML = '<h3>Brent Signal</h3><div class="bv-hint">Price data unavailable.</div>';
+  }}
+}}
 
-    // ── URL navigation (communicate with Streamlit) ────────────────────────
-    function bvNavigate(params) {{
-      try {{
-        const url = new URL(window.parent.location.href);
-        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-        window.parent.location.href = url.toString();
-      }} catch(e) {{
-        const url = new URL(window.location.href);
-        Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-        window.location.href = url.toString();
-      }}
-    }}
+// ── Removed edge list ──────────────────────────────────────────────────────
+function bvRenderRemoved() {{
+  const el  = document.getElementById('bv-removed-list');
+  const btn = document.getElementById('bv-clear-btn');
+  if (!REMOVED.length) {{
+    el.innerHTML = '<span class="bv-hint" style="font-style:italic">None</span>';
+    btn.style.display = 'none';
+  }} else {{
+    el.innerHTML = REMOVED.map(e =>
+      `<div class="rm-item"><span>${{e}}</span>` +
+      `<button onclick="bvRestoreEdge('${{e}}')" title="Restore">✕</button></div>`
+    ).join('');
+    btn.style.display = 'block';
+  }}
+}}
 
-    function bvRemoveEdge(eid) {{
-      if (!REMOVED.includes(eid)) REMOVED.push(eid);
-      bvClosePopup();
-      bvNavigate({{bv_action: 'remove_edge', bv_value: eid}});
-    }}
-    function bvRestoreEdge(eid) {{
-      REMOVED = REMOVED.filter(e => e !== eid);
-      bvClosePopup();
-      bvNavigate({{bv_action: 'restore_edge', bv_value: eid}});
-    }}
-    function bvClearRemoved() {{
-      REMOVED = [];
-      bvNavigate({{bv_action: 'clear_removed', bv_value: '1'}});
-    }}
-    function bvSetModel(mode) {{
-      MODEL = mode;
-      document.getElementById('bv-btn-flow').className = mode === 'flow' ? 'active' : '';
-      document.getElementById('bv-btn-gnn').className  = mode === 'gnn'  ? 'active-gnn' : '';
-      bvNavigate({{bv_action: 'set_model', bv_value: mode}});
-    }}
-    function bvToggleHormuz() {{
-      HORMUZ_ON = !HORMUZ_ON;
-      bvApplyHormuzUI();
-      bvNavigate({{bv_action: 'hormuz_mode', bv_value: HORMUZ_ON ? 'on' : 'off'}});
-    }}
+// ── Hormuz UI ──────────────────────────────────────────────────────────────
+function bvApplyHormuzUI() {{
+  document.getElementById('bv-hz-btn').className     = 'bv-hz-btn' + (HORMUZ_ON ? ' active' : '');
+  document.getElementById('bv-hz-banner').style.display = HORMUZ_ON ? 'flex' : 'none';
+  document.getElementById('bv-hz-panel').style.display  = HORMUZ_ON ? 'block' : 'none';
+}}
 
-    // ── Deck.gl click interception ─────────────────────────────────────────
-    // pydeck uses createDeck() from @deck.gl/jupyter-widget bundle.
-    // We patch createDeck() before it runs to capture the returned instance,
-    // then register a click listener on the canvas.
-    (function patchCreateDeck() {{
-      const orig = window.createDeck;
-      if (typeof orig === 'function') {{
-        window.createDeck = function(opts) {{
-          const inst = orig.call(this, opts);
-          window.deckInstance = inst;
-          bvAttachClicks(inst);
-          return inst;
-        }};
-      }} else {{
-        setTimeout(patchCreateDeck, 40);
-      }}
-    }})();
-
-    function bvAttachClicks(inst) {{
-      // Wait for the canvas to exist
-      const tryCanvas = () => {{
-        const canvas = document.querySelector('#deck-container canvas');
-        if (!canvas) {{ setTimeout(tryCanvas, 120); return; }}
-        canvas.addEventListener('click', function(evt) {{
-          if (evt.target.closest('#bv-left,#bv-right,#bv-popup,#bv-topbar,#bv-legend,#bv-hz-panel')) return;
-          const deck = window.deckInstance;
-          if (!deck || !deck.pickObject) {{ bvClosePopup(); return; }}
-          const info = deck.pickObject({{x: evt.offsetX, y: evt.offsetY, radius: 10}});
-          if (info && info.object) {{
-            const px = evt.clientX, py = evt.clientY;
-            if (info.layer && info.layer.id === 'edges') {{
-              bvShowEdgePopup(info.object, px, py);
-            }} else {{
-              bvShowNodePopup(info.object, px, py);
-            }}
-          }} else {{
-            bvClosePopup();
-          }}
-        }});
-      }};
-      tryCanvas();
+// ── Popup ──────────────────────────────────────────────────────────────────
+function bvClosePopup() {{
+  document.getElementById('bv-popup').style.display = 'none';
+}}
+function bvShowEdgePopup(obj, px, py) {{
+  const removed = REMOVED.includes(obj.edge_id);
+  const bc = obj.edge_type === 'chokepoint' ? 'pb-choke' : obj.edge_type === 'lane' ? 'pb-lane' : 'pb-conn';
+  const uc = obj.util_pct > 95 ? '#ef4444' : obj.util_pct > 70 ? '#f97316' : obj.util_pct > 40 ? '#facc15' : '#38bdf8';
+  document.getElementById('bv-popup-content').innerHTML = `
+    <h4>${{obj.edge_id}}</h4>
+    <span class="pop-badge ${{bc}}">${{(obj.edge_type||'EDGE').toUpperCase()}}</span>
+    ${{obj.passage ? ' <span class="pop-badge pb-lane" style="background:rgba(167,139,250,0.15);color:#a78bfa;border-color:rgba(167,139,250,0.3)">' + obj.passage + '</span>' : ''}}
+    <div class="pop-row"><span class="pop-label">Utilization</span><span class="pop-val" style="color:${{uc}}">${{obj.util_pct}}%</span></div>
+    <div class="pop-row"><span class="pop-label">Transits / wk</span><span class="pop-val">${{obj.transits}}</span></div>
+    <div class="pop-row"><span class="pop-label">Corridor Delay</span><span class="pop-val">+${{obj.delay_days}} d</span></div>
+    <div class="pop-row"><span class="pop-label">Volume</span><span class="pop-val">${{obj.volume_mbd}} mb/d</span></div>
+    <div class="pop-row"><span class="pop-label">Length</span><span class="pop-val">${{(obj.length_nm||0).toLocaleString()}} nm</span></div>
+    ${{obj.cost_per_bbl ? '<div class="pop-row"><span class="pop-label">Cost / bbl</span><span class="pop-val">$' + obj.cost_per_bbl + '</span></div>' : ''}}
+    <div class="pop-row"><span class="pop-label">Throttle</span><span class="pop-val">${{(obj.throttle*100).toFixed(0)}}% open</span></div>
+    ${{obj.anomaly_z ? '<div class="pop-row"><span class="pop-label">Anomaly Z</span><span class="pop-val">' + obj.anomaly_z + '</span></div>' : ''}}
+    ${{removed
+      ? '<button class="btn-rm btn-restore" onclick="bvRestoreEdge(\\'' + obj.edge_id + '\\')">↺ Restore this edge</button>'
+      : '<button class="btn-rm" onclick="bvRemoveEdge(\\'' + obj.edge_id + '\\')">✕ Remove edge &amp; re-route</button>'
     }}
+  `;
+  bvPositionPopup(px, py);
+}}
+function bvShowNodePopup(obj, px, py) {{
+  document.getElementById('bv-popup-content').innerHTML = `
+    <h4>${{obj.name || obj.node_id}}</h4>
+    <span class="pop-badge pb-node">${{(obj.node_type||'NODE').toUpperCase()}}</span>
+    <div class="pop-row"><span class="pop-label">Node ID</span><span class="pop-val">${{obj.node_id}}</span></div>
+    <div class="pop-row"><span class="pop-label">Country</span><span class="pop-val">${{obj.country || '—'}}</span></div>
+    <div class="pop-row"><span class="pop-label">Latitude</span><span class="pop-val">${{parseFloat(obj.lat).toFixed(2)}}°</span></div>
+    <div class="pop-row"><span class="pop-label">Longitude</span><span class="pop-val">${{parseFloat(obj.lon).toFixed(2)}}°</span></div>
+  `;
+  bvPositionPopup(px, py);
+}}
+function bvPositionPopup(px, py) {{
+  const popup = document.getElementById('bv-popup');
+  popup.style.display = 'block';
+  requestAnimationFrame(() => {{
+    const pw = popup.offsetWidth  || 260;
+    const ph = popup.offsetHeight || 220;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = px + 16, y = py - 24;
+    if (x + pw > vw - 10) x = px - pw - 16;
+    if (y + ph > vh - 10) y = vh - ph - 10;
+    if (y < 10) y = 10;
+    popup.style.left = x + 'px';
+    popup.style.top  = y + 'px';
+  }});
+}}
 
-    // ── Init ───────────────────────────────────────────────────────────────
-    function bvInit() {{
-      bvRenderKPIs();
-      bvRenderRemoved();
-      bvApplyHormuzUI();
-      // Close popup on outside click
-      document.addEventListener('click', e => {{
-        if (!e.target.closest('#bv-popup') &&
-            !e.target.closest('#deck-container canvas')) {{
-          bvClosePopup();
-        }}
-      }});
-    }}
+// ── URL navigation (Streamlit query params) ────────────────────────────────
+function bvNavigate(params) {{
+  try {{
+    const url = new URL(window.parent.location.href);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    window.parent.location.href = url.toString();
+  }} catch(e) {{
+    const url = new URL(window.location.href);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    window.location.href = url.toString();
+  }}
+}}
+function bvRemoveEdge(eid) {{
+  if (!REMOVED.includes(eid)) REMOVED.push(eid);
+  bvClosePopup();
+  bvNavigate({{bv_action: 'remove_edge', bv_value: eid}});
+}}
+function bvRestoreEdge(eid) {{
+  REMOVED = REMOVED.filter(e => e !== eid);
+  bvClosePopup();
+  bvNavigate({{bv_action: 'restore_edge', bv_value: eid}});
+}}
+function bvClearRemoved() {{
+  REMOVED = [];
+  bvNavigate({{bv_action: 'clear_removed', bv_value: '1'}});
+}}
+function bvSetModel(mode) {{
+  MODEL = mode;
+  document.getElementById('bv-btn-flow').className = mode === 'flow' ? 'active' : '';
+  document.getElementById('bv-btn-gnn').className  = mode === 'gnn'  ? 'active-gnn' : '';
+  bvNavigate({{bv_action: 'set_model', bv_value: mode}});
+}}
+function bvToggleHormuz() {{
+  HORMUZ_ON = !HORMUZ_ON;
+  bvApplyHormuzUI();
+  bvNavigate({{bv_action: 'hormuz_mode', bv_value: HORMUZ_ON ? 'on' : 'off'}});
+}}
 
-    if (document.readyState === 'loading') {{
-      document.addEventListener('DOMContentLoaded', bvInit);
-    }} else {{
-      bvInit();
-    }}
-    </script>
-    """)  # end overlay f-string
-
-    # Inject overlay before </body>
-    if "</body>" in base_html:
-        return base_html.replace("</body>", overlay + "\n</body>")
-    return base_html + overlay
+// ── Init ───────────────────────────────────────────────────────────────────
+bvRenderKPIs();
+bvRenderRemoved();
+bvApplyHormuzUI();
+document.addEventListener('click', e => {{
+  if (!e.target.closest('#bv-popup') && !e.target.closest('#deck-container canvas')) {{
+    bvClosePopup();
+  }}
+}});
+</script>
+</body>
+</html>"""
 
 
 # ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
 def init_state() -> None:
-    defaults: dict = {
+    for k, v in {
         "removed_edges": [],
         "model_mode":    "flow",
         "hormuz_mode":   False,
         "scenario":      "2023–24 Red Sea / Houthi Crisis",
         "alpha":         0.18,
         "beta":          3.8,
-    }
-    for k, v in defaults.items():
+    }.items():
         if k not in st.session_state:
             st.session_state[k] = v
 
@@ -1060,7 +1026,6 @@ def init_state() -> None:
 # Sidebar
 # ---------------------------------------------------------------------------
 def render_sidebar() -> dict:
-    """Render sidebar controls; return throttle dict."""
     with st.sidebar:
         st.markdown("### ⚓ Blue Vector Controls")
         st.caption("Fine-grained controls — the globe overlays are interactive too.")
@@ -1069,18 +1034,18 @@ def render_sidebar() -> dict:
             "Scenario", list(PRESET_THROTTLES.keys()),
             index=list(PRESET_THROTTLES.keys()).index(st.session_state.scenario),
         )
-        st.session_state.model_mode = st.segmented_control(
-            "Model",
-            options=["flow", "gnn"],
+        new_model = st.radio(
+            "Model", ["flow", "gnn"],
             format_func=lambda x: "Flow Model (BPR)" if x == "flow" else "GNN Prediction",
-            default=st.session_state.model_mode,
-            key="sidebar_model",
-        ) or st.session_state.model_mode
+            index=0 if st.session_state.model_mode == "flow" else 1,
+            horizontal=True,
+        )
+        if new_model:
+            st.session_state.model_mode = new_model
 
         st.session_state.hormuz_mode = st.toggle(
             "🛢 Hormuz Crisis Mode", value=st.session_state.hormuz_mode,
         )
-
         st.markdown("#### BPR Parameters")
         st.session_state.alpha = st.slider("Alpha", 0.05, 0.35, float(st.session_state.alpha), 0.01)
         st.session_state.beta  = st.slider("Beta",  2.0,  5.0,  float(st.session_state.beta),  0.1)
@@ -1091,9 +1056,8 @@ def render_sidebar() -> dict:
             for key, label in CHOKEPOINTS:
                 default = float(throttles.get(key, 1.0))
                 throttles[key] = st.slider(label, 0.0, 1.0, default, 0.05, key=f"th_{key}")
-            st.form_submit_button("⚡ Apply & Update Globe", width="stretch")
+            st.form_submit_button("⚡ Apply & Update Globe", use_container_width=True)
 
-        # Apply forced removals as zero-throttle on the linked passage
         if st.session_state.removed_edges:
             try:
                 edges_df = pd.read_csv(CONFIG_DIR / "edges.csv")
@@ -1113,7 +1077,7 @@ def render_sidebar() -> dict:
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
-    # ── Optional cloud data gate (skip gracefully in dev mode) ─────────────
+    # Optional cloud data gate — skip gracefully in dev (no secrets.toml)
     try:
         from app.cloud_data import FILES, restore_bundle
         try:
@@ -1128,14 +1092,14 @@ def main() -> None:
                     st.error(f"Dashboard data could not be verified: {exc}")
                     st.stop()
             if any(not (ROOT / name).is_file() for name in FILES):
-                st.error("Dashboard data not configured. Supply DATA_BUNDLE_URL and DATA_BUNDLE_SHA256 in Streamlit Secrets.")
+                st.error("Dashboard data not configured. Supply DATA_BUNDLE_URL / DATA_BUNDLE_SHA256 in Streamlit Secrets.")
                 st.stop()
     except ImportError:
-        pass  # cloud_data not needed in dev
+        pass
 
     init_state()
 
-    # ── Handle query param actions (globe button → URL nav → Streamlit rerun)
+    # Handle query param actions from globe button clicks
     qp     = st.query_params
     action = qp.get("bv_action", "")
     value  = qp.get("bv_value",  "")
@@ -1158,10 +1122,10 @@ def main() -> None:
 
     throttles = render_sidebar()
 
-    # ── Load network ───────────────────────────────────────────────────────
+    # Load network
     nodes, edges = load_network()
 
-    # ── Run flow model ─────────────────────────────────────────────────────
+    # Run flow model
     throttle_active = {k: v for k, v in throttles.items() if v < 1.0}
     try:
         scen_df_json, summary_json = run_flow_scenario(
@@ -1181,26 +1145,23 @@ def main() -> None:
     if "edge_id" in scen_df.columns and geo_cols:
         scen_df = scen_df.merge(edges[geo_cols], on="edge_id", how="left")
 
-    # ── GNN predictions ────────────────────────────────────────────────────
+    # GNN predictions
     scenario_key = SCENARIO_LABEL_MAP.get(st.session_state.scenario, "baseline")
     gnn_df: pd.DataFrame | None = None
     if st.session_state.model_mode == "gnn":
         gnn_df = load_gnn_predictions(scenario_key)
-        if gnn_df is not None and geo_cols and "edge_id" in gnn_df.columns:
-            # Ensure GNN data has geometry
+        if gnn_df is not None and "edge_id" in gnn_df.columns and geo_cols:
             if "route_segments" not in gnn_df.columns:
                 gnn_df = gnn_df.merge(edges[geo_cols], on="edge_id", how="left")
         if gnn_df is None:
-            st.sidebar.warning("GNN predictions unavailable for this scenario — falling back to flow model.")
+            st.sidebar.warning("GNN predictions unavailable — falling back to flow model.")
 
-    # ── Price model ────────────────────────────────────────────────────────
+    # Price model
     brent_data: dict | None = None
     price_df = load_price_impacts()
     if price_df is not None:
-        # Try scenario key first, then baseline
         for key in (scenario_key, "baseline"):
-            col = "week_or_scenario_id" if "week_or_scenario_id" in price_df.columns else (
-                  "scenario_id"         if "scenario_id"         in price_df.columns else None)
+            col = next((c for c in ("week_or_scenario_id", "scenario_id") if c in price_df.columns), None)
             if col is None:
                 break
             row = price_df[price_df[col] == key]
@@ -1217,22 +1178,19 @@ def main() -> None:
                 }
                 break
 
-    # ── Hormuz data ────────────────────────────────────────────────────────
+    # Hormuz data
     hormuz_records: list | None = None
     if st.session_state.hormuz_mode:
         hdf = load_hormuz_data()
         if hdf is not None:
             cols = [c for c in ["week_ending", "actual", "prediction", "persistence"] if c in hdf.columns]
             model_col = "model" if "model" in hdf.columns else None
-            if model_col:
-                sub = hdf[hdf[model_col] == "real_only"][cols].copy()
-            else:
-                sub = hdf[cols].copy()
+            sub = hdf[hdf[model_col] == "real_only"][cols].copy() if model_col else hdf[cols].copy()
             sub["week_ending"] = sub["week_ending"].astype(str)
             hormuz_records = sub.to_dict(orient="records")
 
-    # ── Build layer data ───────────────────────────────────────────────────
-    path_rows, port_rows, junction_rows = build_pydeck_data(
+    # Build layer data
+    path_rows, port_rows, junction_rows = build_layer_data(
         edges_base    = edges,
         scen_df       = scen_df,
         gnn_df        = gnn_df,
@@ -1242,7 +1200,7 @@ def main() -> None:
     )
     kpis = compute_kpis(scen_df, summary)
 
-    # ── Build and serve full globe HTML ────────────────────────────────────
+    # Build self-contained HTML and render
     html = build_globe_html(
         path_rows      = path_rows,
         port_rows      = port_rows,
@@ -1256,9 +1214,9 @@ def main() -> None:
         removed_edges  = st.session_state.removed_edges,
     )
 
-    # Render: use a generous fixed height; the parent-document JS above resizes
-    # the iframe to 100 vh automatically.
-    components.html(html, height=900, scrolling=False)
+    # Height 10000 + self-resize JS = effectively full-viewport.
+    # The JS inside the iframe sets window.frameElement.style.height = parent.innerHeight.
+    components.html(html, height=10000, scrolling=False)
 
 
 if __name__ == "__main__":
