@@ -1,6 +1,17 @@
 # Blue Vector on Streamlit Community Cloud
 
-The entry point is `app/dashboard.py`. This release exposes the full flow solver, not live GNN or price inference. Its scenarios are conditional simulations, not measurements or validated causal forecasts of a crisis.
+The entry point is `app/dashboard.py`. Its scenarios are conditional simulations, not measurements or validated causal forecasts of a crisis.
+
+The panels read saved model artifacts, so a missing file hides that panel instead of guessing:
+
+| Panel | File |
+| --- | --- |
+| Live metrics, globe colours | flow solver, run live for the selected throttles |
+| Brent signal | `data/processed/brent_scenario_impacts.parquet` (exact scenario match only) |
+| GNN toggle | `data/processed/gnn_edge_predictions.parquet` (from `scripts/gnn/evaluate_gnn.py`) |
+| Hormuz crisis button | `data/processed/hormuz_transfer_weekly_predictions.csv` (from `scripts/gnn/evaluate_hormuz_transfer.py`) |
+
+When the GNN file or the Hormuz file is absent, the dashboard says so, disables the control and keeps showing the flow model.
 
 ## Run locally
 
@@ -11,7 +22,7 @@ From the repository root, use Python 3.13:
 .venv/Scripts/python.exe -m streamlit run app/dashboard.py
 ```
 
-The pinned direct dependencies are the versions used for local preparation. Kepler.gl is optional and not installed by the cloud manifest; PyDeck is the supported default map.
+The pinned direct dependencies are the versions used for local preparation. The globe is deck.gl 9.3 loaded from jsDelivr inside `app/globe_template.py` (with `GlobeView` from `@deck.gl/core`, land outlines from `world-atlas`, and no mapbox/maplibre basemap), so the browser needs network access to that CDN. PyDeck and Kepler are no longer used: pydeck's bundled frontend has no `GlobeView`, which is what left the map stuck at a 400x300 flat canvas.
 
 ## Prepare data without committing it
 
