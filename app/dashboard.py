@@ -129,8 +129,9 @@ def load_network() -> tuple[pd.DataFrame, pd.DataFrame]:
     segs_list = []
     for row in edges.itertuples():
         segs = None
-        # Connectors are port stubs a few nm long — a straight segment is the
-        # honest picture and saves one global sea-router call per stub.
+        # Connectors are port-to-junction links, and in this graph they are long
+        # (median 512 nm): a straight segment is the honest picture and saves one
+        # global sea-router call per link.
         if sr_mod is not None and str(getattr(row, "edge_type", "")) != "connector":
             try:
                 feat = sr_mod.searoute(

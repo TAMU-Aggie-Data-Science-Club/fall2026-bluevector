@@ -615,9 +615,17 @@ function bvPickAt(px, py) {
   bvCandidates = [];
   var bestEdge = null, bestEdgeD = Infinity;
   if (hits.length) {
-    var closest = hits[0].d;
-    hits.forEach(function (h) { if (h.d < closest) closest = h.d; });
-    var near = hits.filter(function (h) { return h.d <= closest + 1.0; });
+    // Connectors are the port-to-junction plumbing: thin 0.8 px lines, and in
+    // this graph many are hundreds of nautical miles long (the median is 512 nm,
+    // the longest 1,479 nm), so they lie across whole seas and often pass closer
+    // to the cursor than the corridor the user is aiming at. A click must land on
+    // the lane or chokepoint; a connector is only picked when nothing else is
+    // under the cursor.
+    var pool = hits.filter(function (h) { return h.row.edge_type !== 'connector'; });
+    if (!pool.length) pool = hits;
+    var closest = pool[0].d;
+    pool.forEach(function (h) { if (h.d < closest) closest = h.d; });
+    var near = pool.filter(function (h) { return h.d <= closest + 1.0; });
     near.sort(function (a, b) {
       if (Math.abs(a.d - b.d) > 0.05) return a.d - b.d;
       if (Math.abs(a.row.width - b.row.width) > 0.05) return b.row.width - a.row.width;
