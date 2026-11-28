@@ -186,6 +186,22 @@ def load_gnn_predictions(scenario_key: str) -> pd.DataFrame | None:
     return sub.reset_index(drop=True) if not sub.empty else None
 
 
+@st.cache_data(show_spinner=False)
+def gnn_scenarios() -> set[str]:
+    """Scenario ids present in the exported GNN predictions.
+
+    Empty when the file is absent, so callers can tell *no GNN output yet* apart
+    from *GNN output exists but not for this scenario*.
+    """
+    path = PROCESSED_DIR / "gnn_edge_predictions.parquet"
+    if not path.exists():
+        return set()
+    try:
+        return set(pd.read_parquet(path, columns=["scenario_id"])["scenario_id"].unique())
+    except Exception:
+        return set()
+
+
 @st.cache_data(show_spinner="Loading price model…")
 def load_price_impacts() -> pd.DataFrame | None:
     path = PROCESSED_DIR / "brent_scenario_impacts.parquet"
@@ -443,19 +459,20 @@ def render_sidebar(params: dict, edges: pd.DataFrame) -> dict:
         )
         st.session_state.scenario = scenario
 
-        new_model = st.radio(
+        # Both widgets carry their session-state key: the globe's own toggles write
+        # st.session_state.model_mode / hormuz_mode and rerun, and a keyless widget
+        # would restore its remembered value and overwrite that write.
+        st.radio(
             "Model", ["flow", "gnn"],
             format_func=lambda x: "Flow Model (BPR)" if x == "flow" else "GNN Prediction",
-            index=0 if st.session_state.model_mode == "flow" else 1,
-            horizontal=True,
+            horizontal=True, key="model_mode",
         )
-        st.session_state.model_mode = new_model
 
-        st.session_state.hormuz_mode = st.toggle(
-            "🛢 Hormuz Crisis Mode", value=st.session_state.hormuz_mode,
+        st.toggle(
+            "🛢 Hormuz Crisis Mode",
             help="Weekly Hormuz transfer predictions. Disabled until "
                  "data/processed/hormuz_transfer_weekly_predictions.csv exists.",
-            disabled=load_hormuz_data() is None,
+            disabled=load_hormuz_data() is None, key="hormuz_mode",
         )
 
         st.markdown("#### BPR Parameters")
@@ -637,10 +654,16 @@ def main() -> None:
 
     gnn_note_html = ""
     if not gnn_available:
-        gnn_note_html = (
-            '<div class="bv-note">GNN edge predictions are not in data/processed '
-            '(run scripts/gnn/evaluate_gnn.py) — showing the flow model.</div>'
-        )
+        if gnn_scenarios():
+            gnn_note_html = (
+                '<div class="bv-note">The GNN is trained on the three historical shocks '
+                'and has no predictions for this scenario — showing the flow model.</div>'
+            )
+        else:
+            gnn_note_html = (
+                '<div class="bv-note">GNN edge predictions are not in data/processed '
+                '(run scripts/gnn/evaluate_gnn.py) — showing the flow model.</div>'
+            )
 
     # Build layer data
     path_rows, port_rows, junction_rows = build_layer_data(
