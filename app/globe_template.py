@@ -329,7 +329,7 @@ html, body {
   <div class="bv-hint">
     <b>Click edge</b> → inspect &amp; throttle<br>
     <b class="nd">Click node</b> → port attributes<br>
-    Drag → rotate globe&nbsp;·&nbsp;Scroll → zoom
+    Drag → @@DRAG_VERB@@&nbsp;·&nbsp;Scroll → zoom
   </div>
 </div>
 
@@ -374,6 +374,38 @@ var REMOVED   = @@REMOVED@@;
 var MODEL     = "@@MODEL@@";
 var SCENARIO  = "@@SCENARIO_KEY@@";
 var THROTTLES = @@THROTTLES@@;
+// "globe" or "map": the projection is the only difference between the two
+// builds. Picking, the popup, the throttles and the KPI wiring are shared, so
+// the two can be compared on identical data.
+var VIEW      = "@@VIEW_MODE@@";
+
+// The flat build picks by draw order (see bvPickDeck), so the order has to be
+// the order a reader would expect: connector plumbing at the bottom, then lanes,
+// then the thick chokepoints on top. Sorting the rows is what makes a click on a
+// congested corridor land on that corridor instead of on a lane drawn over it.
+(function bvSortForMap() {
+  if (VIEW !== 'map') return;
+  // Some geometry is written with unwrapped longitudes: a Pacific lane runs
+  // 210° → 263.5°, which is −150° → −96.5°. A globe treats those as the same
+  // meridian, Web Mercator does not — the row is drawn a world away and the map
+  // shows ghost shapes. Shift each row by whole turns so it sits in [−180, 180].
+  PATHS.forEach(function (row) {
+    var sum = 0;
+    row.path.forEach(function (p) { sum += p[0]; });
+    var mean = sum / row.path.length;
+    var off = mean > 180 ? -360 : (mean < -180 ? 360 : 0);
+    if (off) row.path.forEach(function (p) { p[0] += off; });
+  });
+  [PORTS, JUNCTIONS].forEach(function (list) {
+    list.forEach(function (n) { n.lon = ((n.lon + 540) % 360) - 180; });
+  });
+  var rank = { connector: 0, lane: 1, chokepoint: 2 };
+  PATHS = PATHS.slice().sort(function (a, b) {
+    var ra = rank[a.edge_type]; if (ra === undefined) ra = 0;
+    var rb = rank[b.edge_type]; if (rb === undefined) rb = 0;
+    return ra - rb;
+  });
+})();
 // Edges sharing the pixel last clicked, primary first (filled by bvPickAt).
 var bvCandidates = [];
 var bvPopupAt = { x: 0, y: 0 };
@@ -431,11 +463,20 @@ function bvMakeLayers() {
     layers.push(new deck.GeoJsonLayer({
       id: 'land',
       data: LAND,
-      filled: true,
+      // On the flat build the land is drawn as coastlines only: the Afro-Eurasia
+      // ring spans both edges of the world, and Web Mercator fills that ring as a
+      // rectangle over the whole map (the globe wraps it, so the globe keeps its
+      // fill). _normalize does not fix it on this deck.gl build.
+      filled: !bvIsMap(),
       stroked: true,
       getFillColor: [10, 30, 58, 255],
       getLineColor: [36, 64, 100, 255],
       lineWidthMinPixels: 1,
+      // The Afro-Eurasia ring spans both edges of the world. A globe wraps it, so
+      // the ring closes correctly; Web Mercator instead fills it as a rectangle
+      // across the whole map. _normalize splits rings at the antimeridian, and is
+      // only needed on the flat build.
+      _normalize: bvIsMap(),
       pickable: false
     }));
   }
@@ -491,6 +532,8 @@ function bvMakeLayers() {
 // UMD bundle; fall back to `GlobeView` if a later build promotes it.
 var GlobeViewClass = deck.GlobeView || deck._GlobeView;
 
+function bvIsMap() { return VIEW === 'map'; }
+
 // GlobeView has no fitBounds, and its zoom is not Web-Mercator zoom: measured on
 // this build the globe's on-screen radius is about 76 * 2^zoom pixels. Pick the
 // zoom that makes the globe span ~70% of the shorter side of the viewport.
@@ -512,6 +555,18 @@ function bvFitZoom() {
   return Math.max(0.1, Math.min(3.5, Math.round(z * 20) / 20));
 }
 
+// The 2D build shows the whole network at once: Web Mercator cannot fit the
+// poles, so the bounds are the latitudes the graph actually occupies
+// (−56° to 69° in config/edges.csv).
+function bvMapViewState(size) {
+  var fit = new deck.WebMercatorViewport({ width: size[0], height: size[1] })
+    .fitBounds([[-180, -56], [180, 70]], { padding: 12 });
+  return {
+    longitude: fit.longitude, latitude: fit.latitude, zoom: fit.zoom,
+    pitch: 0, bearing: 0
+  };
+}
+
 // Deck reads its parent's size once, at construction, and inside a Streamlit
 // iframe that parent can still be 0-sized at that moment (leaving a 300x150
 // canvas). The size is therefore passed explicitly and the whole Deck is
@@ -525,13 +580,19 @@ function bvBuildDeck() {
   }
   while (mapEl.firstChild) mapEl.removeChild(mapEl.firstChild);
   var size = bvSize();
+  var isMap = bvIsMap();
   deckgl = new deck.Deck({
     parent: mapEl,
     width: size[0],
     height: size[1],
-    views: [new GlobeViewClass({ controller: true })],
-    initialViewState: { longitude: 48, latitude: 18, zoom: bvFitZoom() },
-    controller: { dragRotate: true, touchRotate: true },
+    views: [isMap
+      ? new deck.MapView({ controller: true, repeat: false })
+      : new GlobeViewClass({ controller: true })],
+    initialViewState: isMap
+      ? bvMapViewState(size)
+      : { longitude: 48, latitude: 18, zoom: bvFitZoom() },
+    controller: isMap ? { dragRotate: false, touchRotate: false }
+                      : { dragRotate: true, touchRotate: true },
     layers: bvMakeLayers(),
     parameters: { clearColor: [0.008, 0.031, 0.09, 1] }
   });
@@ -555,6 +616,7 @@ function bvAngleDeg(lon1, lat1, lon2, lat2) {
 }
 
 function bvFrontFacing(lon, lat) {
+  if (bvIsMap()) return true;   // a flat map has no far side
   var vs = deckgl && deckgl.viewState;
   if (!vs || vs.longitude === undefined) return true;
   // A point is on the far side of the globe once it is 90 degrees from the
@@ -644,12 +706,45 @@ function bvPickAt(px, py) {
   return bestNode ? bestNode.obj : null;
 }
 
+// The flat view can use deck.gl's own picking, which the globe view cannot:
+// `pickObject` there returns nothing at all, whatever radius or unproject3D is
+// passed. On a MapView it returns the object that is actually drawn under the
+// pixel, topmost stroke first, so the hit matches what the eye sees instead of
+// the hand-rolled nearest-centreline approximation. `bvPickAt` stays as the
+// fallback for the (empty) pixels deck declines to resolve.
+function bvPickDeck(px, py) {
+  if (!deckgl || !deckgl.pickMultipleObjects) return null;
+  var picks = [];
+  try {
+    picks = deckgl.pickMultipleObjects({ x: px, y: py, radius: 3, depth: 4 }) || [];
+  } catch (e) { return null; }
+  var objs = [], seen = {};
+  picks.forEach(function (p) {
+    var o = p && p.object;
+    if (!o) return;
+    var id = o.edge_id || o.node_id;
+    if (!id || seen[id]) return;
+    seen[id] = 1;
+    objs.push(o);
+  });
+  if (!objs.length) return null;
+  // Same rule as the globe: the long connector links may not outrank the
+  // corridor they cross.
+  var pool = objs.filter(function (o) { return !(o.edge_id && o.edge_type === 'connector'); });
+  if (!pool.length) pool = objs;
+  // Everything under the cursor stays reachable: deck returns the objects front
+  // to back, the first one is the primary and the rest become popup chips (nodes
+  // included, so a dot drawn over a corridor never hides the corridor).
+  bvCandidates = pool;
+  return pool[0];
+}
+
 (function bvWireClicks() {
   function handle(e) {
     var rect = mapEl.getBoundingClientRect();
     var x = e.clientX - rect.left;
     var y = e.clientY - rect.top;
-    var obj = bvPickAt(x, y);
+    var obj = (bvIsMap() ? bvPickDeck(x, y) : null) || bvPickAt(x, y);
     if (!obj) { bvClosePopup(); return; }
     if (obj.edge_id) {
       bvShowEdgePopup(obj, x, y);
@@ -773,7 +868,9 @@ function bvClosePopup() {
 
 function bvShowAlt(i) {
   var row = bvCandidates[i];
-  if (row) bvShowEdgePopup(row, bvPopupAt.x, bvPopupAt.y);
+  if (!row) return;
+  if (row.edge_id) bvShowEdgePopup(row, bvPopupAt.x, bvPopupAt.y);
+  else bvShowNodePopup(row, bvPopupAt.x, bvPopupAt.y);
 }
 
 function bvShowEdgePopup(obj, px, py) {
@@ -812,8 +909,9 @@ function bvShowEdgePopup(obj, px, py) {
     (bvCandidates.length > 1
       ? '<div class="bv-alt">Also at this point: ' +
         bvCandidates.map(function (c, i) {
-          return c.edge_id === obj.edge_id ? '' :
-            '<button onclick="bvShowAlt(' + i + ')">' + c.edge_id + '</button>';
+          var key = c.edge_id || c.node_id;
+          return key === obj.edge_id ? '' :
+            '<button onclick="bvShowAlt(' + i + ')">' + (c.edge_id || c.name || c.node_id) + '</button>';
         }).join('') + '</div>'
       : '');
   bvSetEl('bv-popup-content', html);
@@ -827,7 +925,17 @@ function bvShowNodePopup(obj, px, py) {
     '<div class="pop-row"><span class="pop-label">Node ID</span><span class="pop-val">' + obj.node_id + '</span></div>' +
     '<div class="pop-row"><span class="pop-label">Country</span><span class="pop-val">' + (obj.country || '—') + '</span></div>' +
     '<div class="pop-row"><span class="pop-label">Latitude</span><span class="pop-val">' + parseFloat(obj.lat).toFixed(2) + '°</span></div>' +
-    '<div class="pop-row"><span class="pop-label">Longitude</span><span class="pop-val">' + parseFloat(obj.lon).toFixed(2) + '°</span></div>';
+    '<div class="pop-row"><span class="pop-label">Longitude</span><span class="pop-val">' + parseFloat(obj.lon).toFixed(2) + '°</span></div>' +
+    // A dot can sit on top of a corridor; the corridor is one chip away rather
+    // than unreachable.
+    (bvCandidates.length > 1
+      ? '<div class="bv-alt">Also at this point: ' +
+        bvCandidates.map(function (c, i) {
+          var key = c.edge_id || c.node_id;
+          return key === obj.node_id ? '' :
+            '<button onclick="bvShowAlt(' + i + ')">' + (c.edge_id || c.name || c.node_id) + '</button>';
+        }).join('') + '</div>'
+      : '');
   bvSetEl('bv-popup-content', html);
   bvPositionPopup(px, py);
 }
@@ -974,6 +1082,7 @@ def render_globe_html(
     removed_edges: list[str],
     model_mode: str,
     scenario_key: str,
+    view_mode: str = "globe",
     throttles: dict[str, float],
     hormuz_mode: bool,
     has_hormuz: bool,
@@ -994,6 +1103,8 @@ def render_globe_html(
         "@@REMOVED@@": json.dumps(list(removed_edges)),
         "@@MODEL@@": model_mode,
         "@@SCENARIO_KEY@@": scenario_key,
+        "@@VIEW_MODE@@": view_mode,
+        "@@DRAG_VERB@@": "pan map" if view_mode == "map" else "rotate globe",
         "@@THROTTLES@@": json.dumps({k: round(float(v), 2) for k, v in throttles.items()}),
         "@@RED_SEA_CLS@@": "active" if scenario_key == "red_sea_2024" else "",
         "@@PANAMA_CLS@@": "active" if scenario_key == "panama_drought_2023" else "",

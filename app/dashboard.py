@@ -18,6 +18,7 @@ Run:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -743,6 +744,10 @@ def main() -> None:
     )
     kpis = compute_kpis(scen_df, summary)
 
+    # The 2D comparison build: same page, same data, Web Mercator instead of the
+    # globe. Opt in with BV_MAP=2d so the default stays the globe.
+    view_mode = "map" if os.environ.get("BV_MAP", "").strip().lower() in {"2d", "map"} else "globe"
+
     html = render_globe_html(
         paths          = path_rows,
         ports          = port_rows,
@@ -752,6 +757,7 @@ def main() -> None:
         removed_edges  = closed_edges,
         model_mode     = "gnn" if use_gnn else "flow",
         scenario_key   = scenario_key,
+        view_mode      = view_mode,
         throttles      = throttles,
         hormuz_mode    = st.session_state.hormuz_mode,
         has_hormuz     = has_hormuz,
