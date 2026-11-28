@@ -193,6 +193,16 @@ html, body {
 }
 .bv-thr input[type="range"]:disabled { opacity:.35; cursor:not-allowed; }
 .bv-thr-hint { font-size:9px; line-height:1.5; color:#334155; margin-top:7px; }
+.bv-alt {
+  margin-top:9px; padding-top:9px; border-top:1px solid rgba(56,189,248,.14);
+  font-size:9px; color:#475569; line-height:1.7;
+}
+.bv-alt button {
+  margin:3px 4px 0 0; padding:2px 8px; border-radius:20px;
+  border:1px solid rgba(56,189,248,.3); background:rgba(56,189,248,.1);
+  color:#38bdf8; font-size:9px; font-weight:800; cursor:pointer; font-family:inherit;
+}
+.bv-alt button:hover { background:rgba(56,189,248,.22); }
 .pop-close {
   position:absolute; top:12px; right:14px; background:none; border:none;
   color:#475569; font-size:16px; cursor:pointer; line-height:1; font-family:inherit;
@@ -262,6 +272,14 @@ html, body {
 .bv-hint b.nd { color:#2dd4bf; }
 
 /* ── Narrow viewports (laptops in a split window, phones) ─────────────────── */
+/* Four scenario pills plus the brand need more room than the original two, so
+   the brand gives way first and the pills tighten — clipping the Hormuz or a
+   scenario control would leave a mode unreachable. */
+@media (max-width: 1200px) {
+  .bv-brand, .bv-sep { display: none; }
+  #bv-topbar { padding: 8px 12px; gap: 7px; }
+  .bv-scn-btn, .bv-hz-btn { font-size: 9px; padding: 4px 10px; }
+}
 @media (max-width: 900px) {
   .bv-brand, .bv-sep { display: none; }
   #bv-topbar { padding: 8px 12px; gap: 7px; }
@@ -270,6 +288,10 @@ html, body {
   #bv-right { width: 186px; top: 60px; padding: 12px 12px; }
   .kpi-value { font-size: 17px; }
   #bv-legend { display: none; }
+}
+@media (max-width: 700px) {
+  #bv-topbar { padding: 6px 8px; gap: 5px; }
+  .bv-scn-btn, .bv-hz-btn { font-size: 8px; padding: 3px 7px; letter-spacing: 0; }
 }
 </style>
 </head>
@@ -281,8 +303,12 @@ html, body {
 <div class="bv-panel" id="bv-topbar">
   <div class="bv-brand"><em>BLUE</em>VECTOR&nbsp;🌐</div>
   <div class="bv-sep"></div>
-  <button class="bv-scn-btn @@RED_SEA_CLS@@" id="bv-redsea-btn" onclick="bvToggleRedSea()"
-          title="Load the calibrated 2023–24 Red Sea / Houthi crisis scenario">2023–24 Red Sea Crisis</button>
+  <button class="bv-scn-btn @@RED_SEA_CLS@@" id="bv-redsea-btn" onclick="bvToggleScenario('red_sea_2024')"
+          title="Calibrated 2023–24 Red Sea / Houthi crisis scenario">2023–24 Red Sea Crisis</button>
+  <button class="bv-scn-btn @@PANAMA_CLS@@" id="bv-panama-btn" onclick="bvToggleScenario('panama_drought_2023')"
+          title="Calibrated 2023–24 Panama Canal drought scenario">2023–24 Panama Drought</button>
+  <button class="bv-scn-btn @@EVER_GIVEN_CLS@@" id="bv-evergiven-btn" onclick="bvToggleScenario('ever_given_2021')"
+          title="Calibrated 2021 Ever Given Suez blockage scenario">2021 Ever Given Blockage</button>
   <button class="bv-hz-btn @@HZ_CLS@@" id="bv-hz-btn" onclick="bvToggleHormuz()" @@HZ_DISABLED@@>🛢&nbsp;Hormuz Crisis 2026</button>
 </div>
 
@@ -348,6 +374,9 @@ var REMOVED   = @@REMOVED@@;
 var MODEL     = "@@MODEL@@";
 var SCENARIO  = "@@SCENARIO_KEY@@";
 var THROTTLES = @@THROTTLES@@;
+// Edges sharing the pixel last clicked, primary first (filled by bvPickAt).
+var bvCandidates = [];
+var bvPopupAt = { x: 0, y: 0 };
 var HAS_GNN   = @@HAS_GNN@@;
 var HAS_HZ    = @@HAS_HZ@@;
 var HZ_ON     = @@HZ_ON@@;
@@ -546,7 +575,7 @@ function bvPickAt(px, py) {
   if (!deckgl) return null;
   var vp = deckgl.viewManager.getViewports()[0];
   if (!vp) return null;
-  var bestNode = null, bestEdge = null;
+  var bestNode = null;
 
   [PORTS, JUNCTIONS].forEach(function (list) {
     list.forEach(function (n) {
@@ -557,27 +586,53 @@ function bvPickAt(px, py) {
     });
   });
 
-  PATHS.forEach(function (row) {
+  // Several graph edges can follow one polyline over open water — around the
+  // Cape of Good Hope the chokepoint E007 and several 30-point lanes share the
+  // same route — so their strokes hit at exactly the same distance. Comparing
+  // with a strict < meant the first row in PATHS always won and the others could
+  // never be opened. Every edge whose stroke covers the pixel is now kept as a
+  // candidate, resolved by: genuinely closer, then the thicker stroke (it is the
+  // one covering the pixel), then the stroke drawn last. The rest stay reachable
+  // from the popup, so no coincident edge is unclickable.
+  var hits = [];
+  PATHS.forEach(function (row, idx) {
     var pts = row.path;
     var threshold = Math.max(5, row.width * 0.6 + 4);
-    var prev = null, prevVisible = false;
+    var prev = null, prevVisible = false, best = Infinity;
     for (var i = 0; i < pts.length; i++) {
       var visible = bvFrontFacing(pts[i][0], pts[i][1]);
       var p = visible ? vp.project(pts[i]) : null;
       if (prev && prevVisible && visible) {
         var d = bvPointSegmentDistance(px, py, prev[0], prev[1], p[0], p[1]);
-        if (d <= threshold && (!bestEdge || d < bestEdge.d)) bestEdge = {d: d, obj: row};
+        if (d <= threshold && d < best) best = d;
       }
       prev = p;
       prevVisible = visible;
     }
+    if (best < Infinity) hits.push({ d: best, row: row, i: idx });
   });
+
+  bvCandidates = [];
+  var bestEdge = null, bestEdgeD = Infinity;
+  if (hits.length) {
+    var closest = hits[0].d;
+    hits.forEach(function (h) { if (h.d < closest) closest = h.d; });
+    var near = hits.filter(function (h) { return h.d <= closest + 1.0; });
+    near.sort(function (a, b) {
+      if (Math.abs(a.d - b.d) > 0.05) return a.d - b.d;
+      if (Math.abs(a.row.width - b.row.width) > 0.05) return b.row.width - a.row.width;
+      return b.i - a.i;
+    });
+    bvCandidates = near.map(function (h) { return h.row; });
+    bestEdge = near[0].row;
+    bestEdgeD = near[0].d;
+  }
 
   // A marker sitting on a corridor (Fujairah on Hormuz, for example) should not
   // swallow clicks on the corridor itself, so a node wins only when it is
   // clearly closer to the cursor than the nearest edge.
-  if (bestNode && (!bestEdge || bestNode.d + 2 < bestEdge.d)) return bestNode.obj;
-  if (bestEdge) return bestEdge.obj;
+  if (bestNode && (!bestEdge || bestNode.d + 2 < bestEdgeD)) return bestNode.obj;
+  if (bestEdge) return bestEdge;
   return bestNode ? bestNode.obj : null;
 }
 
@@ -708,7 +763,13 @@ function bvClosePopup() {
   if (p) p.style.display = 'none';
 }
 
+function bvShowAlt(i) {
+  var row = bvCandidates[i];
+  if (row) bvShowEdgePopup(row, bvPopupAt.x, bvPopupAt.y);
+}
+
 function bvShowEdgePopup(obj, px, py) {
+  bvPopupAt = { x: px, y: py };
   var bc = obj.edge_type === 'chokepoint' ? 'pb-choke' :
            obj.edge_type === 'lane' ? 'pb-lane' : 'pb-conn';
   var uc = obj.util_pct > 95 ? '#ef4444' : obj.util_pct > 70 ? '#f97316' :
@@ -739,7 +800,14 @@ function bvShowEdgePopup(obj, px, py) {
           ? 'GNN predictions are fixed per scenario — switch to the flow model to throttle this edge.'
           : 'Share of pre-event throughput the model still carries here. 0% closes the edge and the crude re-routes.') +
       '</div>' +
-    '</div>';
+    '</div>' +
+    (bvCandidates.length > 1
+      ? '<div class="bv-alt">Also at this point: ' +
+        bvCandidates.map(function (c, i) {
+          return c.edge_id === obj.edge_id ? '' :
+            '<button onclick="bvShowAlt(' + i + ')">' + c.edge_id + '</button>';
+        }).join('') + '</div>'
+      : '');
   bvSetEl('bv-popup-content', html);
   bvPositionPopup(px, py);
 }
@@ -865,10 +933,10 @@ function bvToggleHormuz() {
   bvNavigate({ bv_action: 'hormuz_mode', bv_value: HZ_ON ? 'on' : 'off' });
 }
 
-function bvToggleRedSea() {
-  // Switches between the calibrated crisis scenario and the pre-crisis baseline.
+function bvToggleScenario(key) {
+  // Switches between a calibrated crisis scenario and the pre-crisis baseline.
   // The sidebar's Scenario selectbox carries the same state, so it follows.
-  var next = SCENARIO === 'red_sea_2024' ? 'baseline' : 'red_sea_2024';
+  var next = SCENARIO === key ? 'baseline' : key;
   bvNavigate({ bv_action: 'set_scenario', bv_value: next }, false);
 }
 
@@ -920,6 +988,8 @@ def render_globe_html(
         "@@SCENARIO_KEY@@": scenario_key,
         "@@THROTTLES@@": json.dumps({k: round(float(v), 2) for k, v in throttles.items()}),
         "@@RED_SEA_CLS@@": "active" if scenario_key == "red_sea_2024" else "",
+        "@@PANAMA_CLS@@": "active" if scenario_key == "panama_drought_2023" else "",
+        "@@EVER_GIVEN_CLS@@": "active" if scenario_key == "ever_given_2021" else "",
         "@@HAS_GNN@@": "true" if gnn_available else "false",
         "@@HAS_HZ@@": "true" if has_hormuz else "false",
         "@@HZ_ON@@": "true" if (hormuz_mode and has_hormuz) else "false",
