@@ -84,6 +84,13 @@ html, body {
 .bv-hz-btn.active { background:rgba(239,68,68,.22); border-color:rgba(239,68,68,.6); }
 .bv-hz-btn:disabled { border-color: rgba(100,116,139,.25); background: rgba(100,116,139,.06);
   color: #475569; cursor: not-allowed; }
+.bv-scn-btn {
+  padding: 5px 13px; border-radius: 20px;
+  border: 1px solid rgba(56,189,248,.35); background: rgba(56,189,248,.07);
+  color: #38bdf8; font-size: 10px; font-weight: 800;
+  cursor: pointer; transition: all .15s; letter-spacing: .04em; font-family: inherit;
+}
+.bv-scn-btn.active { background:rgba(56,189,248,.22); border-color:rgba(56,189,248,.6); }
 
 /* ── Left panel ───────────────────────────────────────────────────────────── */
 #bv-left {
@@ -164,15 +171,28 @@ html, body {
 .pb-lane  { background:rgba(56,189,248,.18);  color:#38bdf8; border:1px solid rgba(56,189,248,.3); }
 .pb-conn  { background:rgba(100,116,139,.18); color:#94a3b8; border:1px solid rgba(100,116,139,.3); }
 .pb-node  { background:rgba(45,212,191,.18);  color:#2dd4bf; border:1px solid rgba(45,212,191,.3); }
-.btn-rm {
-  margin-top:12px; width:100%; padding:8px; border-radius:9px;
-  border:1px solid rgba(239,68,68,.45); background:rgba(239,68,68,.1);
-  color:#ef4444; font-size:10px; font-weight:800; letter-spacing:.05em;
-  cursor:pointer; transition:background .15s; font-family:inherit;
+.bv-thr { margin-top:13px; padding-top:11px; border-top:1px solid rgba(56,189,248,.14); }
+.bv-thr-head {
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:9px; font-weight:800; color:#64748b; letter-spacing:.08em;
+  text-transform:uppercase; margin-bottom:8px;
 }
-.btn-rm:hover { background:rgba(239,68,68,.22); }
-.btn-restore { border-color:rgba(56,189,248,.45); background:rgba(56,189,248,.1); color:#38bdf8; }
-.btn-restore:hover { background:rgba(56,189,248,.22); }
+.bv-thr-head span:last-child { color:#38bdf8; font-size:12px; font-weight:800; letter-spacing:0; }
+.bv-thr input[type="range"] {
+  -webkit-appearance:none; appearance:none; width:100%; height:3px;
+  border-radius:2px; background:rgba(56,189,248,.25); outline:none; cursor:pointer;
+}
+.bv-thr input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none; width:13px; height:13px;
+  border-radius:50%; background:#38bdf8; border:none;
+  box-shadow:0 0 0 3px rgba(56,189,248,.18); cursor:pointer;
+}
+.bv-thr input[type="range"]::-moz-range-thumb {
+  width:13px; height:13px; border-radius:50%; background:#38bdf8; border:none;
+  box-shadow:0 0 0 3px rgba(56,189,248,.18); cursor:pointer;
+}
+.bv-thr input[type="range"]:disabled { opacity:.35; cursor:not-allowed; }
+.bv-thr-hint { font-size:9px; line-height:1.5; color:#334155; margin-top:7px; }
 .pop-close {
   position:absolute; top:12px; right:14px; background:none; border:none;
   color:#475569; font-size:16px; cursor:pointer; line-height:1; font-family:inherit;
@@ -261,8 +281,8 @@ html, body {
 <div class="bv-panel" id="bv-topbar">
   <div class="bv-brand"><em>BLUE</em>VECTOR&nbsp;🌐</div>
   <div class="bv-sep"></div>
-  <span class="bv-badge bv-badge-blue"  id="bv-scenario-badge">@@SCENARIO@@</span>
-  <span class="bv-badge bv-badge-purple" id="bv-model-badge">@@MODEL_LABEL@@</span>
+  <button class="bv-scn-btn @@RED_SEA_CLS@@" id="bv-redsea-btn" onclick="bvToggleRedSea()"
+          title="Load the calibrated 2023–24 Red Sea / Houthi crisis scenario">2023–24 Red Sea Crisis</button>
   <button class="bv-hz-btn @@HZ_CLS@@" id="bv-hz-btn" onclick="bvToggleHormuz()" @@HZ_DISABLED@@>🛢&nbsp;Hormuz Crisis 2026</button>
 </div>
 
@@ -281,7 +301,7 @@ html, body {
   <button id="bv-clear-btn" onclick="bvClearRemoved()" style="display:none">↺ Restore All</button>
   <h3>Interaction</h3>
   <div class="bv-hint">
-    <b>Click edge</b> → inspect &amp; remove<br>
+    <b>Click edge</b> → inspect &amp; throttle<br>
     <b class="nd">Click node</b> → port attributes<br>
     Drag → rotate globe&nbsp;·&nbsp;Scroll → zoom
   </div>
@@ -326,6 +346,8 @@ var KPI       = @@KPI@@;
 var BRENT     = @@BRENT@@;
 var REMOVED   = @@REMOVED@@;
 var MODEL     = "@@MODEL@@";
+var SCENARIO  = "@@SCENARIO_KEY@@";
+var THROTTLES = @@THROTTLES@@;
 var HAS_GNN   = @@HAS_GNN@@;
 var HAS_HZ    = @@HAS_HZ@@;
 var HZ_ON     = @@HZ_ON@@;
@@ -687,7 +709,6 @@ function bvClosePopup() {
 }
 
 function bvShowEdgePopup(obj, px, py) {
-  var isRemoved = REMOVED.indexOf(obj.edge_id) >= 0;
   var bc = obj.edge_type === 'chokepoint' ? 'pb-choke' :
            obj.edge_type === 'lane' ? 'pb-lane' : 'pb-conn';
   var uc = obj.util_pct > 95 ? '#ef4444' : obj.util_pct > 70 ? '#f97316' :
@@ -702,13 +723,23 @@ function bvShowEdgePopup(obj, px, py) {
     '<div class="pop-row"><span class="pop-label">Volume</span><span class="pop-val">' + obj.volume_mbd + ' mb/d</span></div>' +
     '<div class="pop-row"><span class="pop-label">Length</span><span class="pop-val">' + (obj.length_nm || 0).toLocaleString() + ' nm</span></div>' +
     (obj.cost_per_bbl ? '<div class="pop-row"><span class="pop-label">Cost / bbl</span><span class="pop-val">$' + obj.cost_per_bbl + '</span></div>' : '') +
-    // Scenario throughput is the throttle the scenario asked for; `throttle` is
-    // the capacity/proxy ratio, which is a different (and much smaller) number.
-    '<div class="pop-row"><span class="pop-label">Scenario throughput</span><span class="pop-val">' + obj.throughput_pct + '% open</span></div>' +
     (obj.anomaly_z ? '<div class="pop-row"><span class="pop-label">Anomaly Z</span><span class="pop-val">' + obj.anomaly_z + '</span></div>' : '') +
-    (isRemoved
-      ? '<button class="btn-rm btn-restore" onclick="bvRestoreEdge(\'' + obj.edge_id + '\')">↺ Restore this edge</button>'
-      : '<button class="btn-rm" onclick="bvRemoveEdge(\'' + obj.edge_id + '\')">✕ Remove edge &amp; re-route</button>');
+    '<div class="bv-thr">' +
+      '<div class="bv-thr-head"><span>Edge throttle</span>' +
+        '<span id="bv-thr-val">' + obj.throughput_pct + '%</span></div>' +
+      // The slider sets the throughput fraction the flow solver routes on this
+      // edge (1.0 = open, 0.0 = closed). `throughput_pct` is that same fraction,
+      // so the control starts where the current solve left it.
+      '<input type="range" id="bv-thr" min="0" max="100" step="5" value="' + obj.throughput_pct + '"' +
+      (MODEL === 'gnn' ? ' disabled' : '') +
+      ' oninput="bvThrottleInput(this.value)"' +
+      ' onchange="bvSetEdgeThrottle(\'' + obj.edge_id + '\', this.value)">' +
+      '<div class="bv-thr-hint">' +
+        (MODEL === 'gnn'
+          ? 'GNN predictions are fixed per scenario — switch to the flow model to throttle this edge.'
+          : 'Share of pre-event throughput the model still carries here. 0% closes the edge and the crude re-routes.') +
+      '</div>' +
+    '</div>';
   bvSetEl('bv-popup-content', html);
   bvPositionPopup(px, py);
 }
@@ -754,7 +785,7 @@ function bvPositionPopup(px, py) {
 // helper above already edits the frame element. Navigate by handing the URL to
 // a script element that executes in the Streamlit page itself, where the
 // iframe sandbox does not apply.
-function bvNavigate(params) {
+function bvNavigate(params, keepThrottles) {
   var url;
   try {
     url = new URL(window.parent.location.href);
@@ -763,12 +794,18 @@ function bvNavigate(params) {
   }
   Object.keys(params).forEach(function (k) { url.searchParams.set(k, params[k]); });
   // A click reloads the app, which starts a fresh Streamlit session, so the
-  // rest of the globe's state has to travel with the action or the buttons
+  // rest of the globe's state has to travel with the action or the controls
   // would undo each other (a Hormuz press would drop the GNN selection, a
-  // model press would drop the removed edges).
+  // model press would reset the scenario and the edge throttles).
+  url.searchParams.set('bv_scenario', SCENARIO);
   url.searchParams.set('bv_model', MODEL);
   url.searchParams.set('bv_hormuz', HZ_ON ? 'on' : 'off');
-  if (REMOVED.length) url.searchParams.set('bv_removed', REMOVED.join(','));
+  if (keepThrottles !== false) {
+    var thr = Object.keys(THROTTLES).map(function (k) {
+      return k + ':' + THROTTLES[k];
+    });
+    if (thr.length) url.searchParams.set('bv_throttles', thr.join(','));
+  }
   var target = url.toString();
 
   try {
@@ -784,11 +821,19 @@ function bvNavigate(params) {
   try { window.parent.location.href = target; } catch (e) {}
 }
 
-function bvRemoveEdge(eid) {
-  if (REMOVED.indexOf(eid) < 0) REMOVED.push(eid);
+function bvThrottleInput(pct) {
+  var el = document.getElementById('bv-thr-val');
+  if (el) el.textContent = pct + '%';
+}
+
+// The slider is the edge's throttle in the flow model, not a UI flag: the app
+// reruns run_scenario({edge_id: fraction}), so the popup, the KPIs and the
+// colours all come from that solve.
+function bvSetEdgeThrottle(eid, pct) {
+  var frac = Math.round(Number(pct)) / 100;
   bvClosePopup();
-  bvRenderRemoved();
-  bvNavigate({ bv_action: 'remove_edge', bv_value: eid });
+  bvNavigate({ bv_action: 'set_throttle', bv_value: eid,
+               bv_throttle: frac.toFixed(2) });
 }
 
 function bvRestoreEdge(eid) {
@@ -799,9 +844,10 @@ function bvRestoreEdge(eid) {
 }
 
 function bvClearRemoved() {
+  var ids = REMOVED.join(',');
   REMOVED = [];
   bvRenderRemoved();
-  bvNavigate({ bv_action: 'clear_removed', bv_value: '1' });
+  bvNavigate({ bv_action: 'clear_removed', bv_value: ids });
 }
 
 function bvSetModel(mode) {
@@ -817,6 +863,13 @@ function bvToggleHormuz() {
   HZ_ON = !HZ_ON;
   bvApplyHormuzUI();
   bvNavigate({ bv_action: 'hormuz_mode', bv_value: HZ_ON ? 'on' : 'off' });
+}
+
+function bvToggleRedSea() {
+  // Switches between the calibrated crisis scenario and the pre-crisis baseline.
+  // The sidebar's Scenario selectbox carries the same state, so it follows.
+  var next = SCENARIO === 'red_sea_2024' ? 'baseline' : 'red_sea_2024';
+  bvNavigate({ bv_action: 'set_scenario', bv_value: next }, false);
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
@@ -844,7 +897,8 @@ def render_globe_html(
     brent_data: dict | None,
     removed_edges: list[str],
     model_mode: str,
-    scenario_label: str,
+    scenario_key: str,
+    throttles: dict[str, float],
     hormuz_mode: bool,
     has_hormuz: bool,
     gnn_available: bool,
@@ -855,7 +909,6 @@ def render_globe_html(
     """Fill the template. Tokens are replaced literally, so JS/CSS need no escaping."""
     import json
 
-    model_label = "GNN Prediction" if model_mode == "gnn" else "Flow Model (BPR)"
     tokens = {
         "@@PATHS@@": json.dumps(paths),
         "@@PORTS@@": json.dumps(ports),
@@ -864,8 +917,9 @@ def render_globe_html(
         "@@BRENT@@": json.dumps(brent_data or {}),
         "@@REMOVED@@": json.dumps(list(removed_edges)),
         "@@MODEL@@": model_mode,
-        "@@MODEL_LABEL@@": model_label,
-        "@@SCENARIO@@": scenario_label[:36],
+        "@@SCENARIO_KEY@@": scenario_key,
+        "@@THROTTLES@@": json.dumps({k: round(float(v), 2) for k, v in throttles.items()}),
+        "@@RED_SEA_CLS@@": "active" if scenario_key == "red_sea_2024" else "",
         "@@HAS_GNN@@": "true" if gnn_available else "false",
         "@@HAS_HZ@@": "true" if has_hormuz else "false",
         "@@HZ_ON@@": "true" if (hormuz_mode and has_hormuz) else "false",

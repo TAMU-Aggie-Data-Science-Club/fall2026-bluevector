@@ -229,19 +229,24 @@ def load_hormuz_data() -> pd.DataFrame | None:
 # ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
-def util_to_color(util: float, edge_type: str, throttle: float) -> list[int]:
+def util_to_color(util: float, edge_type: str, throttle_factor: float) -> list[int]:
+    """Edge colour for a utilisation, on the bands LEGEND_ITEMS advertises.
+
+    Red means *congested* (>95% of capacity), not shut: a closed edge reads as
+    the legend's grey "Closed / Removed" swatch, so the two are never confused.
+    """
+    if throttle_factor < 0.01:
+        return [60, 60, 80, 90]
     u = min(max(float(util), 0.0), 1.5)
-    if throttle < 0.01:
-        return [220, 38, 38, 255]
     if edge_type == "chokepoint":
-        if u > 0.95: return [245, 158, 11, 255]
-        if u > 0.70: return [249, 115, 22, 240]
-        if u > 0.40: return [250, 204, 21, 220]
+        if u > 0.95: return [239, 68,  68,  255]
+        if u > 0.70: return [249, 115, 22,  240]
+        if u > 0.40: return [250, 204, 21,  220]
         return [56, 189, 248, 230]
     elif edge_type == "lane":
-        if u > 0.90: return [239, 68,  68,  210]
-        if u > 0.60: return [249, 115, 22,  200]
-        if u > 0.35: return [250, 204, 21,  185]
+        if u > 0.95: return [239, 68,  68,  210]
+        if u > 0.70: return [249, 115, 22,  200]
+        if u > 0.40: return [250, 204, 21,  185]
         return [56, 189, 248, 170]
     return [100, 180, 255, 100]
 
@@ -338,6 +343,19 @@ def build_layer_data(
     return path_rows, port_rows, junction_rows
 
 
+def closed_edge_ids(edges: pd.DataFrame, throttles: dict) -> list[str]:
+    """Edges whose effective throttle is zero — the solver drops them from the graph."""
+    closed: list[str] = []
+    for row in edges.itertuples():
+        eid     = str(row.edge_id)
+        passage = str(getattr(row, "searoute_passage", "") or "")
+        if passage == "nan":
+            passage = ""
+        if float(throttles.get(eid, throttles.get(passage, 1.0))) <= 0.0:
+            closed.append(eid)
+    return closed
+
+
 # ---------------------------------------------------------------------------
 # KPI helpers
 # ---------------------------------------------------------------------------
@@ -409,6 +427,11 @@ CHOKEPOINTS = [
     ("sunda",        "Sunda Strait"),
 ]
 
+CHOKEPOINT_KEYS = {key for key, _ in CHOKEPOINTS}
+
+# Query-param actions carry scenario ids; the sidebar works in display labels.
+KEY_TO_LABEL = {key: label for label, key in SCENARIO_LABEL_MAP.items()}
+
 LEGEND_ITEMS = [
     ("Low utilisation (<40%)",       "#38bdf8"),
     ("Moderate (40–70%)",            "#facc15"),
@@ -433,6 +456,8 @@ def legend_html() -> str:
 def init_state(params: dict) -> None:
     for k, v in {
         "removed_edges": [],
+        # Per-edge throttle overrides from the globe popup, keyed by edge_id.
+        "edge_throttles": {},
         "model_mode":    "flow",
         "hormuz_mode":   False,
         "scenario":      "2023–24 Red Sea / Houthi Crisis",
@@ -447,17 +472,24 @@ def init_state(params: dict) -> None:
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
-def render_sidebar(params: dict, edges: pd.DataFrame) -> dict:
+def reset_edge_overrides() -> None:
+    """A new scenario starts from its own calibrated presets, not per-edge tweaks."""
+    st.session_state.edge_throttles = {}
+
+
+def render_sidebar(params: dict) -> dict:
     presets = preset_throttles(params)
     with st.sidebar:
         st.markdown("### ⚓ Blue Vector Controls")
         st.caption("Fine-grained controls — the globe overlays are interactive too.")
 
+        # Keyed so the globe's scenario button can move it: a query-param action
+        # writes st.session_state.scenario, and a keyless widget would restore
+        # its own remembered value and discard that write.
         scenario = st.selectbox(
-            "Scenario", list(presets.keys()),
-            index=list(presets.keys()).index(st.session_state.scenario),
+            "Scenario", list(presets.keys()), key="scenario",
+            on_change=reset_edge_overrides,
         )
-        st.session_state.scenario = scenario
 
         # Both widgets carry their session-state key: the globe's own toggles write
         # st.session_state.model_mode / hormuz_mode and rerun, and a keyless widget
@@ -485,21 +517,17 @@ def render_sidebar(params: dict, edges: pd.DataFrame) -> dict:
         throttles: dict = dict(presets.get(scenario, {}))
         with st.form("throttle_form"):
             for key, label in CHOKEPOINTS:
-                default = float(throttles.get(key, 1.0))
-                # Key includes the scenario so a new scenario starts from its
-                # own preset instead of the previous scenario's sliders.
+                # Key includes the scenario so a new scenario starts from its own
+                # preset. The default reads the key back, because the globe's edge
+                # slider can carry a chokepoint throttle into it across a reload.
+                state_key = f"th_{scenario}_{key}"
+                default = float(st.session_state.get(state_key, throttles.get(key, 1.0)))
                 throttles[key] = st.slider(
-                    label, 0.0, 1.0, default, SLIDER_STEP,
-                    key=f"th_{scenario}_{key}")
-            st.form_submit_button("⚡ Apply & Update Globe", use_container_width=True)
-
-        if st.session_state.removed_edges:
-            for eid in st.session_state.removed_edges:
-                rows = edges[edges["edge_id"] == eid]
-                if not rows.empty:
-                    passage = str(rows.iloc[0].get("searoute_passage", ""))
-                    if passage and passage != "nan":
-                        throttles[passage] = 0.0
+                    label, 0.0, 1.0, default, SLIDER_STEP, key=state_key)
+            if st.form_submit_button("⚡ Apply & Update Globe", use_container_width=True):
+                # These sliders are the canonical chokepoint control, so applying
+                # them supersedes any per-edge override set from the globe.
+                st.session_state.edge_throttles = {}
 
     return throttles
 
@@ -542,38 +570,62 @@ def main() -> None:
     value  = qp.get("bv_value",  "")
     if action:
         # The reload that carries the action also starts a fresh Streamlit
-        # session, so the globe sends its remaining state (model, Hormuz mode,
-        # removed edges) with the action and it is restored here first.
+        # session, so the globe sends the rest of its state (scenario, model,
+        # Hormuz mode, throttles) with the action and it is restored here first.
+        carried_scenario = KEY_TO_LABEL.get(qp.get("bv_scenario", ""))
+        if carried_scenario:
+            st.session_state.scenario = carried_scenario
         carried_model = qp.get("bv_model", "")
         if carried_model in ("flow", "gnn"):
             st.session_state.model_mode = carried_model
         carried_hormuz = qp.get("bv_hormuz", "")
         if carried_hormuz in ("on", "off"):
             st.session_state.hormuz_mode = (carried_hormuz == "on")
-        carried_removed = qp.get("bv_removed", "")
-        if carried_removed:
-            st.session_state.removed_edges = [
-                e for e in carried_removed.split(",") if e]
-        if action == "remove_edge" and value:
-            if value not in st.session_state.removed_edges:
-                st.session_state.removed_edges.append(value)
+
+        # Switching scenario restarts from that scenario's calibrated presets, so
+        # the previous scenario's throttle values must not follow it.
+        switch_scenario = action == "set_scenario" and value in KEY_TO_LABEL
+        if switch_scenario:
+            st.session_state.scenario = KEY_TO_LABEL[value]
+        st.session_state.edge_throttles = {}
+        if not switch_scenario:
+            for part in qp.get("bv_throttles", "").split(","):
+                key, _, raw = part.partition(":")
+                try:
+                    frac = min(max(float(raw), 0.0), 1.0)
+                except ValueError:
+                    continue
+                if key in CHOKEPOINT_KEYS:
+                    # Chokepoint throttles live in the sidebar slider's state.
+                    st.session_state[f"th_{st.session_state.scenario}_{key}"] = frac
+                elif key:
+                    st.session_state.edge_throttles[key] = frac
+        if action == "set_throttle" and value:
+            try:
+                frac = float(qp.get("bv_throttle", "1") or 1.0)
+            except ValueError:
+                frac = 1.0
+            st.session_state.edge_throttles[value] = min(max(frac, 0.0), 1.0)
         elif action == "restore_edge" and value:
-            st.session_state.removed_edges = [
-                e for e in st.session_state.removed_edges if e != value]
+            # Restore means "open this edge", whatever the scenario preset says.
+            st.session_state.edge_throttles[value] = 1.0
         elif action == "clear_removed":
-            st.session_state.removed_edges = []
-        elif action == "set_model" and value in ("flow", "gnn"):
-            st.session_state.model_mode = value
-        elif action == "hormuz_mode":
-            st.session_state.hormuz_mode = (value == "on")
+            for eid in [e for e in value.split(",") if e]:
+                st.session_state.edge_throttles[eid] = 1.0
         st.query_params.clear()
         st.rerun()
 
     # Load network
     nodes, edges = load_network()
 
-    throttles = render_sidebar(params, edges)
+    throttles = render_sidebar(params)
+    # Per-edge overrides from the globe win over the scenario preset: the solver
+    # checks the edge_id key before chokepoint_portid and searoute_passage.
+    throttles.update(st.session_state.edge_throttles)
     scenario_key = SCENARIO_LABEL_MAP.get(st.session_state.scenario, "baseline")
+    # Edges the solver drops from the routing graph (throttle 0) — grey on the
+    # map and listed in the panel, exactly like the old removed-edge list.
+    closed_edges = closed_edge_ids(edges, throttles)
 
     # Run flow model
     throttle_active = {k: v for k, v in throttles.items() if v < 1.0}
@@ -684,7 +736,7 @@ def main() -> None:
         scen_df       = scen_df,
         gnn_df        = gnn_df,
         use_gnn       = use_gnn,
-        removed_edges = st.session_state.removed_edges,
+        removed_edges = closed_edges,
         nodes_df      = nodes,
         throttles     = throttles,
     )
@@ -696,9 +748,10 @@ def main() -> None:
         junctions      = junction_rows,
         kpis           = kpis,
         brent_data     = brent_data,
-        removed_edges  = st.session_state.removed_edges,
+        removed_edges  = closed_edges,
         model_mode     = "gnn" if use_gnn else "flow",
-        scenario_label = st.session_state.scenario,
+        scenario_key   = scenario_key,
+        throttles      = throttles,
         hormuz_mode    = st.session_state.hormuz_mode,
         has_hormuz     = has_hormuz,
         gnn_available  = gnn_available,
