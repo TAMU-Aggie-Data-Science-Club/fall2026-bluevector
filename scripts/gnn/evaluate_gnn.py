@@ -43,12 +43,19 @@ def main():
             train_end = pd.Timestamp(EVENTS[event][0])
             pre = observations[pd.to_datetime(observations.week_ending) < train_end].groupby('edge_id').weekly_tanker_transits.mean()
             changed = solver[solver.scenario_id.eq(event)].set_index('edge_id').tanker_transits
-            ratios = changed / base.replace(0, np.nan)
-            implied = group.edge_id.map(pre * ratios)
-            if implied.isna().any():
+            # A chokepoint the router sends nothing through (Magellan: zero baseline transits)
+            # has no percentage change to apply to observed means, so it cannot be compared here.
+            # Any other gap between observed and solver edges is still an error.
+            unrated = set(base.index[~(base > 0)])
+            implied = group.edge_id.map(pre * (changed / base.replace(0, np.nan)))
+            excluded = sorted(set(group.loc[implied.isna(), 'edge_id']))
+            if set(excluded) - unrated:
                 raise ValueError('Missing common solver/observed comparison edges')
+            keep = implied.notna()
             rows.append(dict(event=event, model='physics_conditional', source='modeled',
-                             **metrics(group.actual, implied, group.persistence)))
+                             excluded_zero_baseline_edges=','.join(excluded),
+                             **metrics(group.loc[keep, 'actual'], implied[keep],
+                                       group.loc[keep, 'persistence'])))
     report = pd.DataFrame(rows)
     persistence = report[report.model.eq('persistence')].set_index('event').rmse
     report['rmse_skill_vs_persistence'] = 1 - report.rmse / report.event.map(persistence)
