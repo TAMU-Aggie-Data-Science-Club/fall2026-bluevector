@@ -368,49 +368,73 @@ function bvSetEl(id, html) {
 })();
 
 // ── Layers ───────────────────────────────────────────────────────────────────
-var pathLayer = new deck.PathLayer({
-  id: 'edges',
-  data: PATHS,
-  getPath: function (d) { return d.path; },
-  getColor: function (d) { return d.color; },
-  getWidth: function (d) { return d.width; },
-  widthUnits: 'pixels',
-  widthMinPixels: 1,
-  widthMaxPixels: 14,
-  capRounded: true,
-  jointRounded: true,
-  pickable: true,
-  autoHighlight: true,
-  highlightColor: [255, 255, 255, 60]
-});
+// Layer instances must be created afresh for every Deck. deck.gl layer objects
+// are single-use: `bvBuildDeck()` finalizes the previous Deck, which tears down
+// each layer's state, and handing the same instances to the next Deck makes
+// them fail to initialize ("deck: initialization of PathLayer(...): assertion
+// failed") — the globe then draws with no edges and no nodes at all.
+function bvMakeLayers() {
+  var layers = [];
 
-var portLayer = new deck.ScatterplotLayer({
-  id: 'ports',
-  data: PORTS,
-  getPosition: function (d) { return [d.lon, d.lat]; },
-  getFillColor: [45, 212, 191, 220],
-  radiusUnits: 'pixels',
-  getRadius: 5,
-  radiusMinPixels: 4,
-  radiusMaxPixels: 11,
-  pickable: true,
-  autoHighlight: true,
-  highlightColor: [45, 212, 191, 80]
-});
+  if (LAND) {
+    layers.push(new deck.GeoJsonLayer({
+      id: 'land',
+      data: LAND,
+      filled: true,
+      stroked: true,
+      getFillColor: [10, 30, 58, 255],
+      getLineColor: [36, 64, 100, 255],
+      lineWidthMinPixels: 1,
+      pickable: false
+    }));
+  }
 
-var junctionLayer = new deck.ScatterplotLayer({
-  id: 'junctions',
-  data: JUNCTIONS,
-  getPosition: function (d) { return [d.lon, d.lat]; },
-  getFillColor: [250, 204, 21, 190],
-  radiusUnits: 'pixels',
-  getRadius: 3.5,
-  radiusMinPixels: 3,
-  radiusMaxPixels: 8,
-  pickable: true,
-  autoHighlight: true,
-  highlightColor: [250, 204, 21, 60]
-});
+  layers.push(new deck.PathLayer({
+    id: 'edges',
+    data: PATHS,
+    getPath: function (d) { return d.path; },
+    getColor: function (d) { return d.color; },
+    getWidth: function (d) { return d.width; },
+    widthUnits: 'pixels',
+    widthMinPixels: 1,
+    widthMaxPixels: 14,
+    capRounded: true,
+    jointRounded: true,
+    pickable: true,
+    autoHighlight: true,
+    highlightColor: [255, 255, 255, 60]
+  }));
+
+  layers.push(new deck.ScatterplotLayer({
+    id: 'ports',
+    data: PORTS,
+    getPosition: function (d) { return [d.lon, d.lat]; },
+    getFillColor: [45, 212, 191, 220],
+    radiusUnits: 'pixels',
+    getRadius: 5,
+    radiusMinPixels: 4,
+    radiusMaxPixels: 11,
+    pickable: true,
+    autoHighlight: true,
+    highlightColor: [45, 212, 191, 80]
+  }));
+
+  layers.push(new deck.ScatterplotLayer({
+    id: 'junctions',
+    data: JUNCTIONS,
+    getPosition: function (d) { return [d.lon, d.lat]; },
+    getFillColor: [250, 204, 21, 190],
+    radiusUnits: 'pixels',
+    getRadius: 3.5,
+    radiusMinPixels: 3,
+    radiusMaxPixels: 8,
+    pickable: true,
+    autoHighlight: true,
+    highlightColor: [250, 204, 21, 60]
+  }));
+
+  return layers;
+}
 
 // deck.gl 9.3 exports the globe view as the experimental `_GlobeView` in the
 // UMD bundle; fall back to `GlobeView` if a later build promotes it.
@@ -420,7 +444,7 @@ var GlobeViewClass = deck.GlobeView || deck._GlobeView;
 // this build the globe's on-screen radius is about 76 * 2^zoom pixels. Pick the
 // zoom that makes the globe span ~70% of the shorter side of the viewport.
 var mapEl = document.getElementById('map');
-var landLayer = null;
+var LAND = null;
 var deckgl = null;
 
 function bvSize() {
@@ -435,13 +459,6 @@ function bvFitZoom() {
   var target = 0.35 * Math.min(size[0], size[1]);
   var z = Math.log2(Math.max(target, 40) / 76);
   return Math.max(0.1, Math.min(3.5, Math.round(z * 20) / 20));
-}
-
-function bvMakeLayers() {
-  var layers = [];
-  if (landLayer) layers.push(landLayer);
-  layers.push(pathLayer, portLayer, junctionLayer);
-  return layers;
 }
 
 // Deck reads its parent's size once, at construction, and inside a Streamlit
@@ -582,16 +599,7 @@ setTimeout(function () {
   fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json')
     .then(function (r) { return r.json(); })
     .then(function (topo) {
-      landLayer = new deck.GeoJsonLayer({
-        id: 'land',
-        data: topojson.feature(topo, topo.objects.land),
-        filled: true,
-        stroked: true,
-        getFillColor: [10, 30, 58, 255],
-        getLineColor: [36, 64, 100, 255],
-        lineWidthMinPixels: 1,
-        pickable: false
-      });
+      LAND = topojson.feature(topo, topo.objects.land);
       bvBuildDeck();
     })
     .catch(function () {});
