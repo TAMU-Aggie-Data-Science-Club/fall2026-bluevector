@@ -745,11 +745,43 @@ function bvPositionPopup(px, py) {
 }
 
 // ── Actions → Streamlit query params ─────────────────────────────────────────
+// Every control in this page has to make the Streamlit app rerun, and the only
+// channel that survives the embed is a query param on the app's own URL.
+// Writing `window.parent.location` from here is silently dropped: `st.iframe`
+// sandboxes the embed without `allow-top-navigation`, so the write is refused
+// and the button appears dead. The embed is same-origin (`allow-same-origin`
+// plus a `srcdoc` document), so the parent's DOM is reachable — the resize
+// helper above already edits the frame element. Navigate by handing the URL to
+// a script element that executes in the Streamlit page itself, where the
+// iframe sandbox does not apply.
 function bvNavigate(params) {
-  var target = window.parent.location.href;
-  var url = new URL(target);
+  var url;
+  try {
+    url = new URL(window.parent.location.href);
+  } catch (e) {
+    return;
+  }
   Object.keys(params).forEach(function (k) { url.searchParams.set(k, params[k]); });
-  window.parent.location.href = url.toString();
+  // A click reloads the app, which starts a fresh Streamlit session, so the
+  // rest of the globe's state has to travel with the action or the buttons
+  // would undo each other (a Hormuz press would drop the GNN selection, a
+  // model press would drop the removed edges).
+  url.searchParams.set('bv_model', MODEL);
+  url.searchParams.set('bv_hormuz', HZ_ON ? 'on' : 'off');
+  if (REMOVED.length) url.searchParams.set('bv_removed', REMOVED.join(','));
+  var target = url.toString();
+
+  try {
+    var doc = window.parent.document;
+    var script = doc.createElement('script');
+    script.textContent = 'window.location.href = ' + JSON.stringify(target) + ';';
+    (doc.body || doc.documentElement).appendChild(script);
+    script.remove();
+    return;
+  } catch (e) {}
+
+  // Last resort for embeds that block inline scripts: try the direct write.
+  try { window.parent.location.href = target; } catch (e) {}
 }
 
 function bvRemoveEdge(eid) {

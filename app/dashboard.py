@@ -541,6 +541,19 @@ def main() -> None:
     action = qp.get("bv_action", "")
     value  = qp.get("bv_value",  "")
     if action:
+        # The reload that carries the action also starts a fresh Streamlit
+        # session, so the globe sends its remaining state (model, Hormuz mode,
+        # removed edges) with the action and it is restored here first.
+        carried_model = qp.get("bv_model", "")
+        if carried_model in ("flow", "gnn"):
+            st.session_state.model_mode = carried_model
+        carried_hormuz = qp.get("bv_hormuz", "")
+        if carried_hormuz in ("on", "off"):
+            st.session_state.hormuz_mode = (carried_hormuz == "on")
+        carried_removed = qp.get("bv_removed", "")
+        if carried_removed:
+            st.session_state.removed_edges = [
+                e for e in carried_removed.split(",") if e]
         if action == "remove_edge" and value:
             if value not in st.session_state.removed_edges:
                 st.session_state.removed_edges.append(value)
